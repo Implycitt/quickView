@@ -1,0 +1,16 @@
+{
+  "name": "quickview",
+  "version": "1.0.0",
+  "description": "hot reload pdf viewer to be able to see LaTeX and typst documents in real time",
+  "license": "MIT",
+  "author": "Quentin Bordelon",
+  "type": "commonjs",
+  "main": "src/.electron/electron.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "devDependencies": {
+    "electron": "^35.0.3"
+  }
+}
