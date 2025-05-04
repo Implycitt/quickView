@@ -1,0 +1,21 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Electron</title>
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
+    />
+
+    <link href="./assets/main.css" type="text/css" rel="stylesheet" />
+  </head>
+
+  <body>
+    <div id="app">
+    <canvas id="pdfContainer"></canvas>
+
+    <script type="module" src="./src/scripts/pdf.ts"></script>
+    <script type="module" src="./src/renderer.ts"></script>
+  </body>
+</html>
