@@ -1,0 +1,8 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+@theme {
+  --color-lavender-400: #a78bfa;
+  --color-lavender-500: #8b5cf6;
+  --color-lavender-600: #7c3aed;
+}
