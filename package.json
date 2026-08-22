@@ -13,6 +13,7 @@
     "@tailwindcss/typography": "^0.5.20",
     "@tailwindcss/vite": "^4.3.3",
     "@types/bun": "latest",
+    "@types/markdown-it": "^14.2.0",
     "autoprefixer": "^10.5.4",
     "concurrently": "^10.0.5",
     "postcss": "^8.5.26",
@@ -26,6 +27,9 @@
   },
   "dependencies": {
     "electron": "^43.4.0",
+    "katex": "^0.18.4",
+    "markdown-it": "^15.0.0",
+    "markdown-it-texmath": "^1.0.0",
     "marked": "^18.0.10"
   }
 }
