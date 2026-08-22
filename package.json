@@ -1,21 +1,25 @@
 {
   "name": "quickview",
-  "main": "dist/main.js",
   "type": "module",
   "private": true,
+  "main": "dist-electron/main.js",
   "scripts": {
-    "build-ts": "tsc",
-    "watch-ts": "tsc --watch --preserveWatchOutput",
-    "watch-css": "npx @tailwindcss/cli -i ./public/input.css -o ./public/main.css --watch",
-    "start-electron": "electron .",
-    "dev": "bun run build-ts && concurrently -k \"bun run watch-ts\" \"bun run watch-css\" \"bun run start-electron\""
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
   },
   "devDependencies": {
     "@tailwindcss/cli": "^4.3.3",
     "@tailwindcss/typography": "^0.5.20",
+    "@tailwindcss/vite": "^4.3.3",
     "@types/bun": "latest",
+    "autoprefixer": "^10.5.4",
     "concurrently": "^10.0.5",
-    "tailwindcss": "^4.3.3"
+    "postcss": "^8.5.26",
+    "tailwindcss": "^4.3.3",
+    "vite": "^8.2.2",
+    "vite-plugin-electron": "^1.1.1",
+    "vite-plugin-electron-renderer": "^1.0.0"
   },
   "peerDependencies": {
     "typescript": "^5"

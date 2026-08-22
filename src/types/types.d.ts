@@ -1,14 +1,19 @@
-export{};
-
 export interface FileResponse {
-  binary: Uint8Array;
-  text: string;
+    data: any;
+    content: any;
+    path: string;
+    name: string;
+    binary: Uint8Array;
+    text: string;
 }
 
 declare global {
-  interface Window {
-    electronAPI: {
-      readFile: (filePath: string) => Promise<FileResponse>;
+    interface Window {
+        electronAPI: {
+            pickAndReadFile: () => Promise<FileResponse | null>;
+            onFileUpdated: (callback: (data: FileResponse) => void) => void;
+        };
+        marked: any;
+        pdfjsLib: any;
     }
-  }
 }
