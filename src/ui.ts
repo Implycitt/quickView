@@ -7,7 +7,7 @@ export const DOM = {} as {
     toggleScrollModeBtn: HTMLButtonElement;
     zoomInBtn: HTMLButtonElement;
     zoomOutBtn: HTMLButtonElement;
-    zoomLevelSpan: HTMLElement;
+    zoomLevelSpan: HTMLInputElement;
 };
 
 export function initDOM() {
@@ -19,7 +19,7 @@ export function initDOM() {
     DOM.toggleScrollModeBtn = document.getElementById('toggle-scroll-mode') as HTMLButtonElement;
     DOM.zoomInBtn = document.getElementById('zoom-in') as HTMLButtonElement;
     DOM.zoomOutBtn = document.getElementById('zoom-out') as HTMLButtonElement;
-    DOM.zoomLevelSpan = document.getElementById('zoom-level') as HTMLElement;
+    DOM.zoomLevelSpan = document.getElementById('zoom-level') as HTMLInputElement;
 }
 
 export function toggleSidebar(forceState?: 'open' | 'closed') {
@@ -49,4 +49,37 @@ export function updateScrollModeClasses(isSnapMode: boolean) {
         scrollContainer.classList.remove('snap-y', 'snap-mandatory');
         document.querySelectorAll('.pdf-page-wrapper').forEach(w => w.classList.remove('snap-center', 'min-h-[90%]'));
     }
+}
+
+export function initSidebarResizer() {
+    const sidebar = document.getElementById('sidebar');
+    const resizer = document.getElementById('sidebar-resizer');
+
+    if (!sidebar || !resizer) return;
+
+    let isResizing = false;
+
+    resizer.addEventListener('mousedown', (e) => {
+        isResizing = true;
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (!isResizing) return;
+        
+        const newWidth = e.clientX;
+        
+        if (newWidth > 150 && newWidth < 600) {
+            sidebar.style.width = `${newWidth}px`;
+        }
+    });
+
+    document.addEventListener('mouseup', () => {
+        if (isResizing) {
+            isResizing = false;
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+        }
+    });
 }

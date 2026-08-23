@@ -1,9 +1,11 @@
-import '../main.css';
-import { DOM, initDOM, toggleSidebar, updateScrollModeClasses } from './ui.js';
-import { renderFileContent, renderAllMainPages, PdfState } from './renderer.js';
+import './ui/main.css';
+import { DOM, initDOM, toggleSidebar, updateScrollModeClasses, initSidebarResizer } from './ui.js';
+import { renderAllMainPages, PdfState } from './rendering/pdfRenderer.js';
+import { renderFileContent } from './rendering/fileHandler.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     initDOM();
+    initSidebarResizer(); 
 
     if (DOM.sidebarToggle) {
         DOM.sidebarToggle.addEventListener('click', () => toggleSidebar());
@@ -18,9 +20,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (DOM.zoomInBtn) {
         DOM.zoomInBtn.addEventListener('click', () => {
+            PdfState.zoomMode = 'manual';
             PdfState.currentScale += 0.2;
             if (DOM.zoomLevelSpan) {
-                DOM.zoomLevelSpan.innerText = `${Math.round(PdfState.currentScale * 100)}%`;
+                (DOM.zoomLevelSpan as HTMLInputElement).value = `${Math.round(PdfState.currentScale * 100)}%`;
             }
             renderAllMainPages();
         });
@@ -28,12 +31,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (DOM.zoomOutBtn) {
         DOM.zoomOutBtn.addEventListener('click', () => {
+            PdfState.zoomMode = 'manual';
             if (PdfState.currentScale > 0.4) {
                 PdfState.currentScale -= 0.2;
                 if (DOM.zoomLevelSpan) {
-                    DOM.zoomLevelSpan.innerText = `${Math.round(PdfState.currentScale * 100)}%`;
+                    (DOM.zoomLevelSpan as HTMLInputElement).value = `${Math.round(PdfState.currentScale * 100)}%`;
                 }
                 renderAllMainPages();
+            }
+        });
+    }
+
+    const zoomInput = DOM.zoomLevelSpan as HTMLInputElement;
+    if (zoomInput) {
+        zoomInput.addEventListener('change', (e) => {
+            const target = e.target as HTMLInputElement;
+            const parsedZoom = parseFloat(target.value.replace('%', ''));
+            
+            if (!isNaN(parsedZoom) && parsedZoom > 10 && parsedZoom < 1000) {
+                PdfState.zoomMode = 'manual';
+                PdfState.currentScale = parsedZoom / 100;
+                renderAllMainPages();
+            } else {
+                target.value = `${Math.round(PdfState.currentScale * 100)}%`;
             }
         });
     }
@@ -53,7 +73,13 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    window.electronAPI.onFileUpdated(async (content) => {
+    window.electronAPI.onFileUpdated(async (content: any) => {
         await renderFileContent(content);
+    });
+
+    window.addEventListener('resize', () => {
+        if (PdfState.currentPdfDoc) {
+            renderAllMainPages();
+        }
     });
 });

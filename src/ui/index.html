@@ -6,12 +6,11 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com blob:; style-src 'self' 'unsafe-inline'; frame-src blob:;">
     <title>QuickView</title>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <script type="module" src="/src/index.ts"></script>
+    <script type="module" src="../index.ts"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 </head>
 <body class="bg-gray-900 text-gray-100 font-sans h-screen overflow-hidden flex flex-col selection:bg-lavender-500 selection:text-white">
 
-    <!-- Header -->
     <header class="bg-gray-800 border-b border-gray-700 px-4 py-3 flex justify-between items-center shadow-md z-10">
         <div class="flex items-center gap-3">
             <button id="sidebar-toggle" class="p-2 text-gray-400 hover:bg-gray-700 hover:text-lavender-400 rounded-lg transition-colors cursor-pointer">
@@ -36,7 +35,7 @@
                             <path fill-rule="evenodd" d="M3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd" />
                         </svg>
                     </button>
-                    <span id="zoom-level" class="text-xs font-mono font-medium text-gray-300 w-12 text-center">100%</span>
+                    <input type="text" id="zoom-level" class="text-xs font-mono font-medium text-gray-300 w-14 text-center bg-gray-900 border border-transparent rounded outline-none focus:border-lavender-400 focus:bg-gray-800 transition-colors" value="100%">
                     <button id="zoom-in" class="p-2 text-gray-400 hover:text-lavender-400 hover:bg-gray-800 transition-colors cursor-pointer">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
                             <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
@@ -51,18 +50,15 @@
         </div>
     </header>
 
-    <!-- App Layout -->
-    <div class="flex flex-1 overflow-hidden relative">
-        <aside id="sidebar" class="w-64 flex-shrink-0 bg-gray-800 border-r border-gray-700 transition-[width] duration-300 ease-in-out overflow-hidden flex flex-col shadow-inner">
-            <div class="p-4 border-b border-gray-700 bg-gray-900/50">
-                <h2 class="text-xs font-bold text-lavender-400 uppercase tracking-wider">Previews</h2>
-            </div>
-            <div id="sidebar-content" class="flex-1 overflow-y-auto p-4 space-y-4 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-                <p class="text-sm text-gray-500 italic text-center mt-4">No file loaded.</p>
-            </div>
+    <div class="flex h-screen w-screen overflow-hidden">
+        
+        <aside id="sidebar" class="h-full bg-gray-800 shrink-0 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] scrollbar-none" style="width: 280px;">
+            <div id="sidebar-content" class="p-4"></div>
         </aside>
 
-        <main id="main-content" class="flex-1 overflow-y-auto flex justify-center transition-colors duration-300 bg-gray-900 relative [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+        <div id="sidebar-resizer" class="w-1 cursor-col-resize hover:bg-lavender-400 transition-colors bg-gray-700 z-10 shrink-0"></div>
+
+        <main id="main-content" class="flex-1 overflow-y-auto flex justify-center transition-colors duration-300 bg-gray-900 relative [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] scrollbar-none">
             <div class="w-full max-w-5xl p-8 my-auto text-center" id="empty-state">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mx-auto text-gray-600 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />

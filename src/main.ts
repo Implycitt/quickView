@@ -65,6 +65,7 @@ function createWindow() {
     const win = new BrowserWindow({
         width: 1200,
         height: 800,
+        autoHideMenuBar: true,
         webPreferences: {
             preload: path.join(__dirname, '../dist-electron/preload.mjs'),
             contextIsolation: true,
@@ -73,9 +74,9 @@ function createWindow() {
     });
 
     if (process.env.VITE_DEV_SERVER_URL) {
-        win.loadURL(process.env.VITE_DEV_SERVER_URL);
+        win.loadURL(process.env.VITE_DEV_SERVER_URL + 'src/ui/index.html');
     } else {
-        win.loadFile(path.join(__dirname, '../dist/index.html'));
+        win.loadFile(path.join(__dirname, '../dist/src/ui/index.html'));
     }
 }
 
