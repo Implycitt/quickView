@@ -22,17 +22,19 @@ export function initDOM() {
     DOM.zoomLevelSpan = document.getElementById('zoom-level') as HTMLInputElement;
 }
 
+let savedSidebarWidth = '280px';
 export function toggleSidebar(forceState?: 'open' | 'closed') {
     if (!DOM.sidebar) return;
-    if (forceState === 'open') {
-        DOM.sidebar.classList.replace('w-0', 'w-64');
-    } else if (forceState === 'closed') {
-        DOM.sidebar.classList.replace('w-64', 'w-0');
+    
+    const isClosed = DOM.sidebar.style.width === '0px';
+    
+    if (forceState === 'open' || (!forceState && isClosed)) {
+        DOM.sidebar.style.width = savedSidebarWidth;
     } else {
-        DOM.sidebar.classList.replace(
-            DOM.sidebar.classList.contains('w-64') ? 'w-64' : 'w-0',
-            DOM.sidebar.classList.contains('w-64') ? 'w-0' : 'w-64'
-        );
+        if (!isClosed) {
+            savedSidebarWidth = DOM.sidebar.style.width || '280px';
+        }
+        DOM.sidebar.style.width = '0px';
     }
 }
 
@@ -63,6 +65,7 @@ export function initSidebarResizer() {
         isResizing = true;
         document.body.style.cursor = 'col-resize';
         document.body.style.userSelect = 'none';
+        sidebar.classList.remove('transition-[width]', 'duration-300');
     });
 
     document.addEventListener('mousemove', (e) => {
@@ -80,6 +83,8 @@ export function initSidebarResizer() {
             isResizing = false;
             document.body.style.cursor = '';
             document.body.style.userSelect = '';
+            sidebar.classList.add('transition-[width]', 'duration-300');
+            window.dispatchEvent(new Event('resize'));
         }
     });
 }

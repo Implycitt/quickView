@@ -1,6 +1,6 @@
 process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = 'true';
 
-import { app, BrowserWindow, ipcMain, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, Menu } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,55 +10,57 @@ const __dirname = path.dirname(__filename);
 
 let activeWatchedPath: string | null = null;
 
-ipcMain.handle('file:pick-and-read', async (event) => {
-    const { canceled, filePaths } = await dialog.showOpenDialog({
-        properties: ['openFile'],
-        filters: [
-            { name: 'Documents', extensions: ['md', 'pdf'] }
-        ]
-    });
+const isPackaged = app.isPackaged;
+const args = process.argv.slice(isPackaged ? 1 : 2);
+let cliFilePath: string | null = null;
 
-    if (canceled || filePaths.length === 0) {
-        return null;
+if (args.length > 0 && !args[0].startsWith('--')) {
+    cliFilePath = args[0];
+}
+
+async function getFilePayload(targetPath: string) {
+    const fileName = path.basename(targetPath);
+    if (fileName.endsWith('.md')) {
+        const content = await fs.promises.readFile(targetPath, 'utf-8');
+        return { name: fileName, content };
+    } else {
+        const fileBuffer = await fs.promises.readFile(targetPath);
+        return { name: fileName, data: Array.from(fileBuffer) };
     }
+}
 
-    const filePath = filePaths[0];
-    const fileName = path.basename(filePath);
-    const webContents = event.sender;
-
-
+function setupFileWatcher(targetPath: string, webContents: Electron.WebContents) {
     if (activeWatchedPath) {
         fs.unwatchFile(activeWatchedPath);
-        activeWatchedPath = null;
     }
+    
+    activeWatchedPath = targetPath;
 
-    activeWatchedPath = filePath;
-
-    fs.watchFile(filePath, { interval: 300 }, async (curr, prev) => {
+    fs.watchFile(targetPath, { interval: 300 }, async (curr, prev) => {
         if (curr.mtimeMs !== prev.mtimeMs) {
             try {
                 await new Promise(resolve => setTimeout(resolve, 50));
-
-                if (fileName.endsWith('.md')) {
-                    const content = await fs.promises.readFile(filePath, 'utf-8');
-                    webContents.send('file-updated', { name: fileName, content });
-                } else {
-                    const fileBuffer = await fs.promises.readFile(filePath);
-                    webContents.send('file-updated', { name: fileName, data: Array.from(fileBuffer) });
-                }
+                const payload = await getFilePayload(targetPath);
+                webContents.send('file-updated', payload);
             } catch (err) {
                 console.error("[Main] Error re-reading file on update:", err);
             }
         }
     });
+}
 
-    if (fileName.endsWith('.md')) {
-        const content = await fs.promises.readFile(filePath, 'utf-8');
-        return { name: fileName, content };
-    } else {
-        const fileBuffer = await fs.promises.readFile(filePath);
-        return { name: fileName, data: Array.from(fileBuffer) };
-    }
+ipcMain.handle('file:pick-and-read', async (event) => {
+    const { canceled, filePaths } = await dialog.showOpenDialog({
+        properties: ['openFile'],
+        filters: [{ name: 'Documents', extensions: ['md', 'pdf'] }]
+    });
+
+    if (canceled || filePaths.length === 0) return null;
+
+    const filePath = filePaths[0];
+    
+    setupFileWatcher(filePath, event.sender);
+    return await getFilePayload(filePath);
 });
 
 function createWindow() {
@@ -73,6 +75,18 @@ function createWindow() {
         },
     });
 
+    win.webContents.on('did-finish-load', async () => {
+        if (cliFilePath && fs.existsSync(cliFilePath)) {
+            try {
+                setupFileWatcher(cliFilePath, win.webContents);
+                const payload = await getFilePayload(cliFilePath);
+                win.webContents.send('file-updated', payload);
+            } catch (err) {
+                console.error("Failed to load CLI file:", err);
+            }
+        }
+    });
+
     if (process.env.VITE_DEV_SERVER_URL) {
         win.loadURL(process.env.VITE_DEV_SERVER_URL + 'src/ui/index.html');
     } else {
@@ -80,4 +94,7 @@ function createWindow() {
     }
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+    Menu.setApplicationMenu(null);
+    createWindow();
+});
