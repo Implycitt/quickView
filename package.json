@@ -17,6 +17,11 @@
       "output": "release"
     },
     "publish": null,
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "package.json"
+    ],
     "mac": {
       "target": "zip"
     },
