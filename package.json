@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "package": "electron-builder" 
   },
   "devDependencies": {
     "@tailwindcss/cli": "^4.3.3",
@@ -25,6 +26,7 @@
   },
   "dependencies": {
     "electron": "^43.4.0",
+    "electron-builder": "^26.15.3",
     "katex": "^0.18.4",
     "markdown-it": "^15.0.0",
     "markdown-it-texmath": "^1.0.0",
