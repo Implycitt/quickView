@@ -5,14 +5,14 @@
     "": {
       "name": "quickview",
       "dependencies": {
-        "electron": "^43.4.0",
-        "electron-builder": "^26.15.3",
         "katex": "^0.18.4",
         "markdown-it": "^15.0.0",
         "markdown-it-texmath": "^1.0.0",
         "marked": "^18.0.10",
       },
       "devDependencies": {
+        "electron": "^43.4.0",
+        "electron-builder": "^26.15.3",
         "@tailwindcss/cli": "^4.3.3",
         "@tailwindcss/typography": "^0.5.20",
         "@tailwindcss/vite": "^4.3.3",

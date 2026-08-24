@@ -39,11 +39,11 @@
     "typescript": "^7.0.2",
     "vite": "^8.2.2",
     "vite-plugin-electron": "^1.1.1",
-    "vite-plugin-electron-renderer": "^1.0.0"
+    "vite-plugin-electron-renderer": "^1.0.0",
+    "electron": "^43.4.0",
+    "electron-builder": "^26.15.3"
   },
   "dependencies": {
-    "electron": "^43.4.0",
-    "electron-builder": "^26.15.3",
     "katex": "^0.18.4",
     "markdown-it": "^15.0.0",
     "markdown-it-texmath": "^1.0.0",
