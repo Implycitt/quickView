@@ -1,4 +1,4 @@
-name: Build and Release QuickView
+name: Build and Release
 
 on:
   push:
@@ -14,14 +14,18 @@ jobs:
         os: [macos-latest, ubuntu-latest, windows-latest]
 
     steps:
-      - name: Checkout Code
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "24"
-          cache: "bun"
+
+      - name: Setup bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
 
       - name: Install Dependencies
         run: bun install
@@ -29,7 +33,7 @@ jobs:
       - name: Build Code
         run: bun run build
 
-      - name: Compile and Package (Electron)
+      - name: Compile and Package
         run: bun run package
 
       - name: Upload to GitHub Release
