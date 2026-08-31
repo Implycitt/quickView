@@ -21,16 +21,16 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "24"
-          cache: "npm"
+          cache: "bun"
 
       - name: Install Dependencies
-        run: npm install
+        run: bun install
 
       - name: Build Code
-        run: npm run build
+        run: bun run build
 
       - name: Compile and Package (Electron)
-        run: npm run package
+        run: bun run package
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2

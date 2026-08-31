@@ -1,4 +1,4 @@
-import { DOM, toggleSidebar } from '../ui.js';
+import { DOM, toggleSidebar, toggleKeybindsModal } from '../ui.js';
 
 export function initKeybinds() {
     document.addEventListener('keydown', (e) => {
@@ -6,45 +6,53 @@ export function initKeybinds() {
             return;
         }
 
+        var keyPressed = e.key.toLowerCase();
+
+        // Show keybinds
+        if (keyPressed === '/') {
+            e.preventDefault();
+            toggleKeybindsModal();
+        }
+
         // change mode
-        if (e.key.toLowerCase() === 'm') {
+        if (keyPressed === 'm') {
             e.preventDefault();
             DOM.toggleScrollModeBtn?.click();
         }
 
         // sidebar
-        if (e.key.toLowerCase() === 's') {
+        if (keyPressed === 's') {
             e.preventDefault();
             toggleSidebar();
         }
         
         // zoom in
-        if (e.key.toLowerCase() === 'z') {
+        if (keyPressed === 'z') {
             e.preventDefault();
             DOM.zoomInBtn?.click(); 
         }
         
         // zoom out
-        if (e.key.toLowerCase() === 'x') {
+        if (keyPressed === 'x') {
             e.preventDefault();
             DOM.zoomOutBtn?.click(); 
         }
 
         // pick file
-        if (e.key.toLowerCase() === 'f') {
+        if (keyPressed === 'f') {
             e.preventDefault();
             const filePickerBtn = document.querySelector('.file-picker-btn') as HTMLButtonElement;
             filePickerBtn?.click();
         }
         
         // scroll up
-        if (e.key.toLowerCase() === 'j') {
+        if (keyPressed === 'j') {
             e.preventDefault();
             performScroll(1);
         }
         
         // scroll down
-        if (e.key.toLowerCase() === 'k') {
+        if (keyPressed === 'k') {
             e.preventDefault();
             performScroll(-1);
         }

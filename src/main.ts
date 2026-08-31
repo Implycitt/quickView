@@ -73,6 +73,7 @@ function createWindow() {
             contextIsolation: true,
             nodeIntegration: false,
         },
+        icon: path.join(__dirname, '../assets/icons/icon.ico')
     });
 
     win.webContents.on('did-finish-load', async () => {

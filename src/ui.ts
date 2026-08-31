@@ -8,6 +8,9 @@ export const DOM = {} as {
     zoomInBtn: HTMLButtonElement;
     zoomOutBtn: HTMLButtonElement;
     zoomLevelSpan: HTMLInputElement;
+    keybindsToggleBtn: HTMLButtonElement;
+    keybindsModal: HTMLElement;
+    closeKeybindsBtn: HTMLButtonElement;
 };
 
 export function initDOM() {
@@ -20,6 +23,9 @@ export function initDOM() {
     DOM.zoomInBtn = document.getElementById('zoom-in') as HTMLButtonElement;
     DOM.zoomOutBtn = document.getElementById('zoom-out') as HTMLButtonElement;
     DOM.zoomLevelSpan = document.getElementById('zoom-level') as HTMLInputElement;
+    DOM.keybindsToggleBtn = document.getElementById('keybinds-toggle') as HTMLButtonElement;
+    DOM.keybindsModal = document.getElementById('keybinds-modal') as HTMLElement;
+    DOM.closeKeybindsBtn = document.getElementById('close-keybinds') as HTMLButtonElement;
 }
 
 let savedSidebarWidth = '280px';
@@ -87,4 +93,9 @@ export function initSidebarResizer() {
             window.dispatchEvent(new Event('resize'));
         }
     });
+}
+
+export function toggleKeybindsModal() {
+    if (!DOM.keybindsModal) return;
+    DOM.keybindsModal.classList.toggle('hidden');
 }

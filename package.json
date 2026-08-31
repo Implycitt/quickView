@@ -23,12 +23,15 @@
       "package.json"
     ],
     "mac": {
+      "icon": "assets/icons/icon.icns",
       "target": "zip"
     },
     "win": {
+      "icon": "assets/icons/icon.ico",
       "target": "zip"
     },
     "linux": {
+      "icon": "assets/icons/icon.png",
       "target": "zip"
     }
   },
