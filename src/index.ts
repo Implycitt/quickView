@@ -1,5 +1,5 @@
 import './ui/main.css';
-import { DOM, initDOM, toggleSidebar, updateScrollModeClasses, initSidebarResizer, toggleKeybindsModal } from './ui.js';
+import { DOM, initDOM, toggleSidebar, updateScrollModeClasses, initSidebarResizer, toggleKeybindsModal, setSidebarTab } from './ui.js';
 import { renderAllMainPages, renderThumbnails, goToPage, PdfState } from './rendering/pdfRenderer.js';
 import { renderFileContent } from './rendering/fileHandler.js';
 import { initKeybinds } from './ui/keybinds.js';
@@ -21,6 +21,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (DOM.sidebarToggle) {
         DOM.sidebarToggle.addEventListener('click', () => toggleSidebar());
+    }
+
+    if (DOM.tabPreviewsBtn) {
+        DOM.tabPreviewsBtn.addEventListener('click', () => setSidebarTab('previews'));
+    }
+    if (DOM.tabSectionsBtn) {
+        DOM.tabSectionsBtn.addEventListener('click', () => setSidebarTab('sections'));
     }
     
     if (DOM.toggleScrollModeBtn) {

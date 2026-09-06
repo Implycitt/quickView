@@ -1,4 +1,4 @@
-import { DOM, toggleSidebar, toggleKeybindsModal } from '../ui.js';
+import { DOM, toggleSidebar, toggleKeybindsModal, setSidebarTab } from '../ui.js';
 
 export function initKeybinds() {
     document.addEventListener('keydown', (e) => {
@@ -32,6 +32,18 @@ export function initKeybinds() {
         if (keyPressed === 's') {
             e.preventDefault();
             toggleSidebar();
+        }
+
+        // sections 
+        if (keyPressed === 'o') {
+            e.preventDefault();
+            const closed = DOM.sidebar.style.width === '0px';
+            if (closed) {
+                toggleSidebar('open');
+                setSidebarTab('sections');
+            } else {
+                toggleSidebar('closed');
+            }
         }
         
         // zoom in

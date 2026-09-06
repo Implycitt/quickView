@@ -2,7 +2,7 @@ import { DOM, toggleSidebar } from '../ui.js';
 import type { FileResponse } from '../types/types.d.ts';
 
 import { renderMarkdownWithCallouts } from './mdRenderer.js';
-import { PdfState, renderAllMainPages, renderThumbnails } from './pdfRenderer.js';
+import { PdfState, renderAllMainPages, renderThumbnails, renderOutline } from './pdfRenderer.js';
 
 function attachImageFallbacks(root: HTMLElement) {
     root.querySelectorAll('img').forEach((img) => {
@@ -55,7 +55,9 @@ export async function renderFileContent(content: FileResponse) {
         
         const htmlContent = renderMarkdownWithCallouts(content.content || '', content.path || ''); 
         toggleSidebar('closed'); 
-        DOM.sidebarContent.innerHTML = ''; 
+        if (DOM.sidebarTabs) DOM.sidebarTabs.classList.add('hidden');
+        DOM.sidebarPreviews.innerHTML = ''; 
+        DOM.sidebarSections.innerHTML = ''; 
 
         DOM.mainContentNode.className = "flex-1 overflow-y-auto flex justify-center bg-gray-900 p-8 transition-colors duration-300"; 
         DOM.mainContentNode.innerHTML = `
@@ -71,6 +73,7 @@ export async function renderFileContent(content: FileResponse) {
         
     } else if (fileName.endsWith('.pdf')) {
         if (DOM.pdfTools) DOM.pdfTools.classList.remove('hidden');
+        if (DOM.sidebarTabs) DOM.sidebarTabs.classList.remove('hidden');
         toggleSidebar('open');
         
         try {
@@ -82,6 +85,7 @@ export async function renderFileContent(content: FileResponse) {
 
             await renderAllMainPages(); 
             await renderThumbnails(); 
+            await renderOutline(); 
             
         } catch (error) {
             console.error("Error rendering PDF:", error);

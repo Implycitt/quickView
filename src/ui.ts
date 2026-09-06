@@ -1,6 +1,10 @@
 export const DOM = {} as {
     sidebar: HTMLElement;
-    sidebarContent: HTMLElement;
+    sidebarPreviews: HTMLElement;
+    sidebarSections: HTMLElement;
+    sidebarTabs: HTMLElement;
+    tabPreviewsBtn: HTMLButtonElement;
+    tabSectionsBtn: HTMLButtonElement;
     sidebarToggle: HTMLButtonElement;
     mainContentNode: HTMLElement;
     pdfTools: HTMLElement;
@@ -19,7 +23,11 @@ export const DOM = {} as {
 
 export function initDOM() {
     DOM.sidebar = document.getElementById('sidebar') as HTMLElement;
-    DOM.sidebarContent = document.getElementById('sidebar-content') as HTMLElement;
+    DOM.sidebarPreviews = document.getElementById('sidebar-previews') as HTMLElement;
+    DOM.sidebarSections = document.getElementById('sidebar-sections') as HTMLElement;
+    DOM.sidebarTabs = document.getElementById('sidebar-tabs') as HTMLElement;
+    DOM.tabPreviewsBtn = document.getElementById('tab-previews') as HTMLButtonElement;
+    DOM.tabSectionsBtn = document.getElementById('tab-sections') as HTMLButtonElement;
     DOM.sidebarToggle = document.getElementById('sidebar-toggle') as HTMLButtonElement;
     DOM.mainContentNode = document.getElementById('main-content') as HTMLElement;
     DOM.pdfTools = document.getElementById('pdf-tools') as HTMLElement;
@@ -50,6 +58,15 @@ export function toggleSidebar(forceState?: 'open' | 'closed') {
         }
         DOM.sidebar.style.width = '0px';
     }
+}
+
+export function setSidebarTab(tab: 'previews' | 'sections') {
+    if (!DOM.sidebarPreviews || !DOM.sidebarSections || !DOM.tabPreviewsBtn || !DOM.tabSectionsBtn) return;
+    const previews = tab === 'previews';
+    DOM.sidebarPreviews.classList.toggle('hidden', !previews);
+    DOM.sidebarSections.classList.toggle('hidden', previews);
+    DOM.tabPreviewsBtn.classList.toggle('sidebar-tab-active', previews);
+    DOM.tabSectionsBtn.classList.toggle('sidebar-tab-active', !previews);
 }
 
 export function getSidebarTargetWidth(): number {

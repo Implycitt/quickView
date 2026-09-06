@@ -75,7 +75,12 @@
     <div class="flex h-screen w-screen overflow-hidden">
         
         <aside id="sidebar" class="transition-[width] duration-300 h-full bg-gray-800 shrink-0 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] scrollbar-none" style="width: 0px;">
-            <div id="sidebar-content" class="p-4 w-full"></div>
+            <div id="sidebar-tabs" class="hidden sticky top-0 z-10 flex gap-1 p-2 bg-gray-800/95 backdrop-blur">
+                <button id="tab-previews" class="sidebar-tab sidebar-tab-active">Previews</button>
+                <button id="tab-sections" class="sidebar-tab">Sections</button>
+            </div>
+            <div id="sidebar-previews" class="p-4 w-full"></div>
+            <div id="sidebar-sections" class="p-4 w-full hidden"></div>
         </aside>
 
         <div id="sidebar-resizer" class="w-1 cursor-col-resize hover:bg-lavender-400 transition-colors bg-gray-700 z-10 shrink-0"></div>
@@ -100,6 +105,7 @@
             <ul class="space-y-3 text-sm text-gray-300">
                 <li class="flex justify-between items-center"><span>Toggle Scroll Mode</span> <kbd class="bg-gray-900 border border-gray-600 px-2 py-1 rounded font-mono">M</kbd></li>
                 <li class="flex justify-between items-center"><span>Toggle Sidebar</span> <kbd class="bg-gray-900 border border-gray-600 px-2 py-1 rounded font-mono">S</kbd></li>
+                <li class="flex justify-between items-center"><span>Show Sections</span> <kbd class="bg-gray-900 border border-gray-600 px-2 py-1 rounded font-mono">O</kbd></li>
                 <li class="flex justify-between items-center"><span>Zoom In</span> <kbd class="bg-gray-900 border border-gray-600 px-2 py-1 rounded font-mono">Z</kbd></li>
                 <li class="flex justify-between items-center"><span>Zoom Out</span> <kbd class="bg-gray-900 border border-gray-600 px-2 py-1 rounded font-mono">X</kbd></li>
                 <li class="flex justify-between items-center"><span>Open File</span> <kbd class="bg-gray-900 border border-gray-600 px-2 py-1 rounded font-mono">F</kbd></li>
