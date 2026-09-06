@@ -25,7 +25,7 @@ async function getFilePayload(targetPath: string) {
         return { name: fileName, content };
     } else {
         const fileBuffer = await fs.promises.readFile(targetPath);
-        return { name: fileName, data: Array.from(fileBuffer) };
+        return { name: fileName, data: fileBuffer };
     }
 }
 

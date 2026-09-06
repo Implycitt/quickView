@@ -1500,9 +1500,3 @@
   scrollbar-width: none;
 }
 
-#sidebar-content canvas, 
-#sidebar-content .pdf-preview-wrapper {
-    width: 100% !important;
-    height: auto !important;
-    max-width: 100%;
-}

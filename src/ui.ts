@@ -52,10 +52,10 @@ export function updateScrollModeClasses(isSnapMode: boolean) {
     
     if (isSnapMode) {
         scrollContainer.classList.add('snap-y', 'snap-mandatory');
-        document.querySelectorAll('.pdf-page-wrapper').forEach(w => w.classList.add('snap-center', 'min-h-[90%]'));
+        scrollContainer.querySelectorAll<HTMLElement>('.pdf-page-container').forEach(w => w.classList.add('snap-center'));
     } else {
         scrollContainer.classList.remove('snap-y', 'snap-mandatory');
-        document.querySelectorAll('.pdf-page-wrapper').forEach(w => w.classList.remove('snap-center', 'min-h-[90%]'));
+        scrollContainer.querySelectorAll<HTMLElement>('.pdf-page-container').forEach(w => w.classList.remove('snap-center'));
     }
 }
 
