@@ -1528,3 +1528,13 @@
   font-style: italic;
 }
 
+.thumb-active {
+  border-color: var(--color-lavender-400);
+  box-shadow: 0 0 0 1px var(--color-lavender-400), 0 0 14px rgba(167, 139, 250, 0.35);
+}
+
+/* Compiled CSS is static, so the hover utility Tailwind never emitted is defined here. */
+.hover\:border-lavender-400:hover {
+  border-color: var(--color-lavender-400);
+}
+

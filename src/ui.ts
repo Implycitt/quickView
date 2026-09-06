@@ -52,6 +52,13 @@ export function toggleSidebar(forceState?: 'open' | 'closed') {
     }
 }
 
+export function getSidebarTargetWidth(): number {
+    const raw = DOM.sidebar?.style.width || savedSidebarWidth;
+    const w = parseFloat(raw);
+    if (!Number.isFinite(w) || w <= 0) return parseFloat(savedSidebarWidth) || 280;
+    return w;
+}
+
 export function updateScrollModeClasses(isSnapMode: boolean) {
     const scrollContainer = document.getElementById('pdf-scroll-container');
     if (!scrollContainer || !DOM.toggleScrollModeBtn) return;
@@ -98,6 +105,7 @@ export function initSidebarResizer() {
             document.body.style.cursor = '';
             document.body.style.userSelect = '';
             sidebar.classList.add('transition-[width]', 'duration-300');
+            savedSidebarWidth = sidebar.style.width || savedSidebarWidth;
             window.dispatchEvent(new Event('resize'));
         }
     });

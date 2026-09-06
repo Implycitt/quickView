@@ -1,6 +1,6 @@
 import './ui/main.css';
 import { DOM, initDOM, toggleSidebar, updateScrollModeClasses, initSidebarResizer, toggleKeybindsModal } from './ui.js';
-import { renderAllMainPages, goToPage, PdfState } from './rendering/pdfRenderer.js';
+import { renderAllMainPages, renderThumbnails, goToPage, PdfState } from './rendering/pdfRenderer.js';
 import { renderFileContent } from './rendering/fileHandler.js';
 import { initKeybinds } from './ui/keybinds.js';
 
@@ -128,6 +128,9 @@ document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('resize', () => {
         if (!PdfState.currentPdfDoc) return;
         if (resizeTimer) clearTimeout(resizeTimer);
-        resizeTimer = setTimeout(() => renderAllMainPages(), 150);
+        resizeTimer = setTimeout(() => {
+            renderAllMainPages();
+            renderThumbnails();
+        }, 150);
     });
 });

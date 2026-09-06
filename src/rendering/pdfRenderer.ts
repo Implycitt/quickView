@@ -1,4 +1,4 @@
-import { DOM, updateScrollModeClasses } from '../ui.js';
+import { DOM, getSidebarTargetWidth, updateScrollModeClasses } from '../ui.js';
 
 window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
@@ -65,6 +65,19 @@ function syncPageCounter() {
     const page = Math.min(pageContainers.length, Math.max(1, pageAtOffset(scrollContainer.scrollTop)));
     DOM.pageCounter.value = String(page);
     DOM.pageCounter.dataset.current = String(page);
+}
+
+let activeThumbPage = 0;
+
+function syncActiveThumb() {
+    if (!scrollContainer || !DOM.sidebarContent || !PdfState.currentPdfDoc) return;
+    const page = Math.min(pageContainers.length, Math.max(1, pageAtOffset(scrollContainer.scrollTop)));
+    if (page === activeThumbPage) return;
+    activeThumbPage = page;
+    const prev = DOM.sidebarContent.querySelector<HTMLElement>('.thumb-active');
+    if (prev) prev.classList.remove('thumb-active');
+    const thumb = DOM.sidebarContent.querySelector<HTMLElement>(`[data-page-num="${page}"]`);
+    if (thumb) thumb.classList.add('thumb-active');
 }
 
 function restoreScrollPos(pos: { page: number; fraction: number } | null) {
@@ -219,6 +232,7 @@ function renderVisibleWindow() {
     if (!scrollContainer || !PdfState.currentPdfDoc) return;
     savedScrollPos = captureScrollPos();
     syncPageCounter();
+    syncActiveThumb();
     const scrollTop = scrollContainer.scrollTop;
     const clientHeight = scrollContainer.clientHeight || 1;
     const first = Math.max(1, pageAtOffset(scrollTop) - RENDER_BEHIND_PAGES);
@@ -360,9 +374,11 @@ export async function renderThumbnails() {
 
     thumbCanvases.clear();
     cancelThumbRenders();
-    DOM.sidebarContent.innerHTML = '';
 
     const sidebar = document.getElementById('sidebar');
+    const savedScrollTop = sidebar ? sidebar.scrollTop : 0;
+    DOM.sidebarContent.innerHTML = '';
+
     if (sidebar) {
         sidebar.onscroll = null;
     }
@@ -374,7 +390,7 @@ export async function renderThumbnails() {
     const total = PdfState.currentPdfDoc.numPages;
     DOM.sidebarContent.style.position = 'relative';
 
-    const placeholderWidth = DOM.sidebarContent.clientWidth || 160;
+    const thumbTargetWidth = Math.max(160, getSidebarTargetWidth() - 32);
     const fragment = document.createDocumentFragment();
     for (let pageNum = 1; pageNum <= total; pageNum++) {
         const canvas = document.createElement('canvas');
@@ -383,7 +399,7 @@ export async function renderThumbnails() {
         canvas.dataset.pageNum = String(pageNum);
         const size = pageSizes.get(pageNum);
         const aspect = size ? size.height / size.width : 792 / 612;
-        canvas.style.height = `${Math.round(placeholderWidth * aspect)}px`;
+        canvas.style.height = `${Math.round(thumbTargetWidth * aspect)}px`;
         canvas.onclick = () => {
             const target = document.getElementById(`page-container-${pageNum}`);
             if (target) target.scrollIntoView({ behavior: 'smooth' });
@@ -392,7 +408,11 @@ export async function renderThumbnails() {
     }
     DOM.sidebarContent.appendChild(fragment);
 
+    activeThumbPage = 0;
+    syncActiveThumb();
+
     if (sidebar) {
+        sidebar.scrollTop = savedScrollTop;
         sidebar.addEventListener('scroll', onThumbScroll, { passive: true });
         scheduleThumbWindowRender();
     } else {
@@ -485,7 +505,7 @@ async function renderThumb(pageNum: number) {
         const page = await PdfState.currentPdfDoc.getPage(pageNum);
         if (!thumb.isConnected || !PdfState.currentPdfDoc) return;
         const baseViewport = page.getViewport({ scale: 1 });
-        const targetWidth = DOM.sidebarContent?.clientWidth || 160;
+        const targetWidth = Math.max(160, getSidebarTargetWidth() - 32); 
         const scale = (targetWidth / baseViewport.width) * getOutputScale();
         const viewport = page.getViewport({ scale });
         thumb.width = Math.max(1, Math.floor(viewport.width));
