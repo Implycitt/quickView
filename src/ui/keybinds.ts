@@ -1,3 +1,4 @@
+import { Domain } from 'domain';
 import { DOM, toggleSidebar, toggleKeybindsModal, setSidebarTab } from '../ui.js';
 
 export function initKeybinds() {
@@ -28,21 +29,20 @@ export function initKeybinds() {
             DOM.toggleScrollModeBtn?.click();
         }
 
-        // sidebar
+        // sidebar - open/close
         if (keyPressed === 's') {
             e.preventDefault();
             toggleSidebar();
         }
 
-        // sections 
+        // sections - previews toggle
         if (keyPressed === 'o') {
+            let previews = DOM.sidebarPreviews.checkVisibility();
             e.preventDefault();
-            const closed = DOM.sidebar.style.width === '0px';
-            if (closed) {
-                toggleSidebar('open');
+            if (previews) {
                 setSidebarTab('sections');
             } else {
-                toggleSidebar('closed');
+                setSidebarTab('previews');
             }
         }
         
