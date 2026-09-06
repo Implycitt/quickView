@@ -1,6 +1,6 @@
 import './ui/main.css';
 import { DOM, initDOM, toggleSidebar, updateScrollModeClasses, initSidebarResizer, toggleKeybindsModal } from './ui.js';
-import { renderAllMainPages, PdfState } from './rendering/pdfRenderer.js';
+import { renderAllMainPages, goToPage, PdfState } from './rendering/pdfRenderer.js';
 import { renderFileContent } from './rendering/fileHandler.js';
 import { initKeybinds } from './ui/keybinds.js';
 
@@ -52,6 +52,41 @@ document.addEventListener('DOMContentLoaded', () => {
                 renderAllMainPages();
             }
         });
+    }
+
+    if (DOM.pageCounter) {
+        DOM.pageCounter.addEventListener('change', () => {
+            if (!PdfState.currentPdfDoc) {
+                DOM.pageCounter.value = '1';
+                return;
+            }
+            const parsed = parseInt(DOM.pageCounter.value, 10);
+            const target = isNaN(parsed) ? 1 : parsed;
+            goToPage(target);
+        });
+        DOM.pageCounter.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                (e.target as HTMLInputElement).blur();
+            } else if (e.key === 'Escape') {
+                const input = e.target as HTMLInputElement;
+                input.value = input.dataset.current || '1';
+                input.blur();
+            }
+        });
+    }
+
+    const stepPage = (delta: number) => {
+        if (!PdfState.currentPdfDoc) return;
+        const parsed = parseInt(DOM.pageCounter.value, 10);
+        const current = isNaN(parsed) ? 1 : parsed;
+        goToPage(current + delta);
+    };
+
+    if (DOM.pagePrev) {
+        DOM.pagePrev.addEventListener('click', () => stepPage(-1));
+    }
+    if (DOM.pageNext) {
+        DOM.pageNext.addEventListener('click', () => stepPage(1));
     }
 
     const zoomInput = DOM.zoomLevelSpan as HTMLInputElement;

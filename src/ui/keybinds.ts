@@ -14,6 +14,14 @@ export function initKeybinds() {
             toggleKeybindsModal();
         }
 
+        // close keybinds
+        if (keyPressed === 'escape') {
+            if (!DOM.keybindsModal?.classList.contains('hidden')) {
+                e.preventDefault();
+                toggleKeybindsModal();
+            }
+        }
+
         // change mode
         if (keyPressed === 'm') {
             e.preventDefault();
@@ -43,6 +51,13 @@ export function initKeybinds() {
             e.preventDefault();
             const filePickerBtn = document.querySelector('.file-picker-btn') as HTMLButtonElement;
             filePickerBtn?.click();
+        }
+
+        // jump to page
+        if (keyPressed === 'g') {
+            e.preventDefault();
+            DOM.pageCounter?.focus();
+            DOM.pageCounter?.select();
         }
         
         // scroll up

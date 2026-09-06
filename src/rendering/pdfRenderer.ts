@@ -49,6 +49,24 @@ function captureScrollPos(): { page: number; fraction: number } | null {
     return { page, fraction: Math.max(0, Math.min(1, (scrollTop - container.offsetTop) / height)) };
 }
 
+export function goToPage(pageNum: number) {
+    if (!scrollContainer || pageContainers.length === 0 || !PdfState.currentPdfDoc) return;
+    const page = Math.min(pageContainers.length, Math.max(1, Math.round(pageNum)));
+    const container = pageContainers[page - 1];
+    if (!container) return;
+    scrollContainer.style.scrollBehavior = 'auto';
+    scrollContainer.scrollTop = container.offsetTop;
+    scrollContainer.style.removeProperty('scroll-behavior');
+}
+
+function syncPageCounter() {
+    if (!scrollContainer || !PdfState.currentPdfDoc || !DOM.pageCounter) return;
+    if (document.activeElement === DOM.pageCounter) return;
+    const page = Math.min(pageContainers.length, Math.max(1, pageAtOffset(scrollContainer.scrollTop)));
+    DOM.pageCounter.value = String(page);
+    DOM.pageCounter.dataset.current = String(page);
+}
+
 function restoreScrollPos(pos: { page: number; fraction: number } | null) {
     if (!pos || !scrollContainer || pageContainers.length === 0) return;
     const page = Math.min(pageContainers.length, Math.max(1, pos.page));
@@ -154,6 +172,12 @@ export async function renderAllMainPages() {
     if (DOM.zoomLevelSpan) {
         DOM.zoomLevelSpan.value = `${Math.round(PdfState.currentScale * 100)}%`;
     }
+    if (DOM.pageCounter) {
+        DOM.pageCounter.value = '1';
+    }
+    if (DOM.pageTotal) {
+        DOM.pageTotal.textContent = `/ ${total}`;
+    }
 
     const fragment = document.createDocumentFragment();
     for (let pageNum = 1; pageNum <= total; pageNum++) {
@@ -194,6 +218,7 @@ function onMainScroll() {
 function renderVisibleWindow() {
     if (!scrollContainer || !PdfState.currentPdfDoc) return;
     savedScrollPos = captureScrollPos();
+    syncPageCounter();
     const scrollTop = scrollContainer.scrollTop;
     const clientHeight = scrollContainer.clientHeight || 1;
     const first = Math.max(1, pageAtOffset(scrollTop) - RENDER_BEHIND_PAGES);
