@@ -22,10 +22,10 @@ async function getFilePayload(targetPath: string) {
     const fileName = path.basename(targetPath);
     if (fileName.endsWith('.md')) {
         const content = await fs.promises.readFile(targetPath, 'utf-8');
-        return { name: fileName, content };
+        return { name: fileName, path: targetPath, content };
     } else {
         const fileBuffer = await fs.promises.readFile(targetPath);
-        return { name: fileName, data: fileBuffer };
+        return { name: fileName, path: targetPath, data: fileBuffer };
     }
 }
 

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com blob:; style-src 'self' 'unsafe-inline'; frame-src blob:;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: file: https: http:; frame-src blob:;">
     <title>QuickView</title>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script type="module" src="../index.ts"></script>
@@ -74,7 +74,7 @@
 
     <div class="flex h-screen w-screen overflow-hidden">
         
-        <aside id="sidebar" class="transition-[width] duration-300 h-full bg-gray-800 shrink-0 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] scrollbar-none" style="width: 280px;">
+        <aside id="sidebar" class="transition-[width] duration-300 h-full bg-gray-800 shrink-0 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] scrollbar-none" style="width: 0px;">
             <div id="sidebar-content" class="p-4 w-full"></div>
         </aside>
 

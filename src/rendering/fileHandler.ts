@@ -4,13 +4,56 @@ import type { FileResponse } from '../types/types.d.ts';
 import { renderMarkdownWithCallouts } from './mdRenderer.js';
 import { PdfState, renderAllMainPages, renderThumbnails } from './pdfRenderer.js';
 
+function attachImageFallbacks(root: HTMLElement) {
+    root.querySelectorAll('img').forEach((img) => {
+        const replaceWithPlaceholder = () => {
+            const src = img.getAttribute('src') || '';
+            const name = decodeURIComponent(src.split('/').pop() || 'image');
+            const alt = img.getAttribute('alt') || name;
+
+            const placeholder = document.createElement('span');
+            placeholder.className = 'md-img-placeholder';
+            placeholder.setAttribute('role', 'img');
+            placeholder.setAttribute('aria-label', `${alt} (image not found)`);
+
+            const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            icon.setAttribute('viewBox', '0 0 24 24');
+            icon.setAttribute('width', '16');
+            icon.setAttribute('height', '16');
+            icon.setAttribute('fill', 'none');
+            icon.setAttribute('stroke', 'currentColor');
+            icon.setAttribute('stroke-width', '1.8');
+            icon.innerHTML =
+                '<rect x="3" y="4" width="18" height="16" rx="2"></rect>' +
+                '<path d="M8 10h.01M8.5 15l3-3 2.5 2.5 3-3 1.5 1.5"></path>' +
+                '<path d="M4 4l16 16" stroke-linecap="round"></path>';
+
+            const label = document.createElement('span');
+            label.textContent = alt;
+
+            const hint = document.createElement('span');
+            hint.className = 'md-img-placeholder-hint';
+            hint.textContent = 'not found';
+
+            placeholder.append(icon, label, hint);
+            img.replaceWith(placeholder);
+        };
+
+        if (img.complete) {
+            if (img.naturalWidth === 0) replaceWithPlaceholder();
+        } else {
+            img.addEventListener('error', replaceWithPlaceholder, { once: true });
+        }
+    });
+}
+
 export async function renderFileContent(content: FileResponse) {
     const fileName = content.name.toLowerCase();
     
     if (fileName.endsWith('.md')) {
         if (DOM.pdfTools) DOM.pdfTools.classList.add('hidden'); 
         
-        const htmlContent = renderMarkdownWithCallouts(content.content || ''); 
+        const htmlContent = renderMarkdownWithCallouts(content.content || '', content.path || ''); 
         toggleSidebar('closed'); 
         DOM.sidebarContent.innerHTML = ''; 
 
@@ -24,9 +67,11 @@ export async function renderFileContent(content: FileResponse) {
                 </div>
             </div>
         `;
+        attachImageFallbacks(DOM.mainContentNode);
         
     } else if (fileName.endsWith('.pdf')) {
         if (DOM.pdfTools) DOM.pdfTools.classList.remove('hidden');
+        toggleSidebar('open');
         
         try {
             const uint8Array = new Uint8Array(content.data); 
