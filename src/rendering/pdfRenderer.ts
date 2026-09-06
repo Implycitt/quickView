@@ -37,6 +37,27 @@ let thumbQueue: number[] = [];
 let thumbActive = 0;
 let measuring = false;
 let viewerVersion = 0;
+let savedScrollPos: { page: number; fraction: number } | null = null;
+
+function captureScrollPos(): { page: number; fraction: number } | null {
+    if (!scrollContainer || pageContainers.length === 0) return null;
+    const scrollTop = scrollContainer.scrollTop;
+    const page = Math.min(pageContainers.length, Math.max(1, pageAtOffset(scrollTop)));
+    const container = pageContainers[page - 1];
+    if (!container) return null;
+    const height = container.offsetHeight || 1;
+    return { page, fraction: Math.max(0, Math.min(1, (scrollTop - container.offsetTop) / height)) };
+}
+
+function restoreScrollPos(pos: { page: number; fraction: number } | null) {
+    if (!pos || !scrollContainer || pageContainers.length === 0) return;
+    const page = Math.min(pageContainers.length, Math.max(1, pos.page));
+    const container = pageContainers[page - 1];
+    if (!container) return;
+    scrollContainer.style.scrollBehavior = 'auto';
+    scrollContainer.scrollTop = container.offsetTop + pos.fraction * container.offsetHeight;
+    scrollContainer.style.removeProperty('scroll-behavior');
+}
 
 export function getFitToScreenScale(page: any, container: HTMLElement): number {
     const unscaledViewport = page.getViewport({ scale: 1.0 });
@@ -101,6 +122,7 @@ function pageAtOffset(y: number): number {
 export async function renderAllMainPages() {
     if (!PdfState.currentPdfDoc || !DOM.mainContentNode) return;
 
+    const restore = savedScrollPos;
     resetViewer();
     const version = viewerVersion;
 
@@ -149,6 +171,7 @@ export async function renderAllMainPages() {
     scrollContainer.addEventListener('scroll', onMainScroll, { passive: true });
 
     measureAllPages(version);
+    restoreScrollPos(restore);
     scheduleMainWindowRender();
 
     updateScrollModeClasses(PdfState.isSnapMode);
@@ -170,6 +193,7 @@ function onMainScroll() {
 
 function renderVisibleWindow() {
     if (!scrollContainer || !PdfState.currentPdfDoc) return;
+    savedScrollPos = captureScrollPos();
     const scrollTop = scrollContainer.scrollTop;
     const clientHeight = scrollContainer.clientHeight || 1;
     const first = Math.max(1, pageAtOffset(scrollTop) - RENDER_BEHIND_PAGES);

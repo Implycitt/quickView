@@ -89,9 +89,10 @@ document.addEventListener('DOMContentLoaded', () => {
         await renderFileContent(content);
     });
 
+    let resizeTimer: any = null;
     window.addEventListener('resize', () => {
-        if (PdfState.currentPdfDoc) {
-            renderAllMainPages();
-        }
+        if (!PdfState.currentPdfDoc) return;
+        if (resizeTimer) clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(() => renderAllMainPages(), 150);
     });
 });
