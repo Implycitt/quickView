@@ -58,6 +58,7 @@ export function toggleSidebar(forceState?: 'open' | 'closed') {
         }
         DOM.sidebar.style.width = '0px';
     }
+    window.dispatchEvent(new Event('qv:sidebar-toggled'));
 }
 
 export function setSidebarTab(tab: 'previews' | 'sections') {
@@ -67,6 +68,7 @@ export function setSidebarTab(tab: 'previews' | 'sections') {
     DOM.sidebarSections.classList.toggle('hidden', previews);
     DOM.tabPreviewsBtn.classList.toggle('sidebar-tab-active', previews);
     DOM.tabSectionsBtn.classList.toggle('sidebar-tab-active', !previews);
+    window.dispatchEvent(new Event('qv:sidebar-tab-changed'));
 }
 
 export function getSidebarTargetWidth(): number {

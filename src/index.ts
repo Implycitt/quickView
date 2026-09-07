@@ -8,7 +8,13 @@ import {
     toggleKeybindsModal,
     setSidebarTab,
 } from './ui.js';
-import { renderAllMainPages, renderThumbnails, goToPage, PdfState } from './rendering/pdfRenderer.js';
+import {
+    renderAllMainPages,
+    renderThumbnails,
+    goToPage,
+    refreshSidebarSync,
+    PdfState,
+} from './rendering/pdfRenderer.js';
 import { renderFileContent } from './rendering/fileHandler.js';
 import { initKeybinds } from './ui/keybinds.js';
 
@@ -36,6 +42,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (DOM.tabSectionsBtn) {
         DOM.tabSectionsBtn.addEventListener('click', () => setSidebarTab('sections'));
     }
+
+    window.addEventListener('qv:sidebar-tab-changed', refreshSidebarSync);
+    window.addEventListener('qv:sidebar-toggled', refreshSidebarSync);
 
     if (DOM.toggleScrollModeBtn) {
         DOM.toggleScrollModeBtn.addEventListener('click', () => {

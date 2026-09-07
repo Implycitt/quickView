@@ -15,10 +15,10 @@ const RENDER_BEHIND_PAGES = 2;
 const RENDER_AHEAD_PAGES = 5;
 const EVICT_BEHIND_PAGES = 8;
 const EVICT_AHEAD_PAGES = 16;
-const RENDER_CONCURRENCY = 2;
+const RENDER_CONCURRENCY = 3;
 const MEASURE_CHUNK = 15;
 const THUMB_EVICT_RADIUS = 40;
-const THUMB_CONCURRENCY = 2;
+const THUMB_GAP = 16;
 
 let scrollContainer: HTMLElement | null = null;
 let pageContainers: HTMLElement[] = [];
@@ -34,7 +34,9 @@ let thumbSettleTimer: any = null;
 let thumbCanvases = new Map<number, HTMLCanvasElement>();
 let thumbPending = new Map<number, { task: any }>();
 let thumbQueue: number[] = [];
-let thumbActive = 0;
+let thumbElements: HTMLElement[] = [];
+let thumbTops: number[] = [];
+let thumbAspects = new Map<number, number>();
 let measuring = false;
 let viewerVersion = 0;
 let savedScrollPos: { page: number; fraction: number } | null = null;
@@ -52,19 +54,25 @@ function captureScrollPos(): { page: number; fraction: number } | null {
 export function goToPage(pageNum: number) {
     if (!scrollContainer || pageContainers.length === 0 || !PdfState.currentPdfDoc) return;
     const page = Math.min(pageContainers.length, Math.max(1, Math.round(pageNum)));
-    const container = pageContainers[page - 1];
-    if (!container) return;
-    scrollContainer.style.scrollBehavior = 'auto';
-    scrollContainer.scrollTop = container.offsetTop;
-    scrollContainer.style.removeProperty('scroll-behavior');
+    const apply = () => {
+        const container = pageContainers[page - 1];
+        if (!container || !container.isConnected || !scrollContainer) return;
+        scrollContainer.style.scrollBehavior = 'auto';
+        scrollContainer.scrollTop = container.offsetTop;
+        scrollContainer.style.removeProperty('scroll-behavior');
+    };
+    apply();
+    void measurePageNow(page).then(apply);
 }
 
 function syncPageCounter() {
     if (!scrollContainer || !PdfState.currentPdfDoc || !DOM.pageCounter) return;
     if (document.activeElement === DOM.pageCounter) return;
     const page = currentPageAtViewport();
-    DOM.pageCounter.value = String(page);
-    DOM.pageCounter.dataset.current = String(page);
+    if (DOM.pageCounter.value !== String(page)) {
+        DOM.pageCounter.value = String(page);
+        DOM.pageCounter.dataset.current = String(page);
+    }
 }
 
 let activeThumbPage = 0;
@@ -76,16 +84,25 @@ function syncActiveThumb() {
     activeThumbPage = page;
     const prev = DOM.sidebarPreviews.querySelector<HTMLElement>('.thumb-active');
     if (prev) prev.classList.remove('thumb-active');
-    const thumb = DOM.sidebarPreviews.querySelector<HTMLElement>(`[data-page-num="${page}"]`);
+    const thumb = ensureThumbMounted(page);
     if (thumb) {
         thumb.classList.add('thumb-active');
         scrollThumbIntoView(thumb);
     }
 }
 
+function previewsPaneVisible(): boolean {
+    return (
+        !!DOM.sidebarPreviews &&
+        !DOM.sidebarPreviews.classList.contains('hidden') &&
+        !!DOM.sidebar &&
+        DOM.sidebar.style.width !== '0px'
+    );
+}
+
 function scrollThumbIntoView(thumb: HTMLElement) {
     const sidebar = document.getElementById('sidebar');
-    if (!sidebar) return;
+    if (!sidebar || !previewsPaneVisible()) return;
     const viewTop = sidebar.scrollTop;
     const viewBottom = viewTop + sidebar.clientHeight;
     const thumbTop = thumb.offsetTop;
@@ -139,12 +156,14 @@ function cancelThumbRenders() {
     }
     thumbPending.clear();
     thumbQueue = [];
-    thumbActive = 0;
 }
 
 export function resetPdfState() {
     cancelThumbRenders();
     thumbCanvases.clear();
+    thumbElements = [];
+    thumbTops = [];
+    thumbAspects.clear();
     savedScrollPos = null;
     PdfState.currentPdfDoc = null;
     PdfState.zoomMode = 'auto';
@@ -185,11 +204,11 @@ function currentPageAtViewport(): number {
     if (pageContainers.length === 0 || !scrollContainer) return 1;
     const top = scrollContainer.scrollTop;
     const bottom = top + (scrollContainer.clientHeight || 1);
-    const first = pageAtOffset(top);
-    let best = first;
+    const mid = (top + bottom) / 2;
+    let best = pageAtOffset(mid);
     let bestVisible = -1;
-    const start = Math.max(1, first - 1);
-    const end = Math.min(pageContainers.length, first + 1);
+    const start = Math.max(1, best - 1);
+    const end = Math.min(pageContainers.length, best + 1);
     for (let p = start; p <= end; p++) {
         const el = pageContainers[p - 1];
         const elTop = el.offsetTop;
@@ -339,7 +358,34 @@ async function measureAllPages(version: number) {
         }
     } finally {
         measuring = false;
+        if (version === viewerVersion) {
+            scheduleMainWindowRender();
+            scheduleThumbWindowRender();
+        }
     }
+}
+
+export async function measurePageNow(pageNum: number) {
+    if (!PdfState.currentPdfDoc || pageSizes.has(pageNum)) return;
+    try {
+        const page = await PdfState.currentPdfDoc.getPage(pageNum);
+        if (!page || pageSizes.has(pageNum)) return;
+        const viewport = page.getViewport({ scale: PdfState.currentScale });
+        pageSizes.set(pageNum, { width: viewport.width, height: viewport.height });
+        const container = pageContainers[pageNum - 1];
+        if (container && container.isConnected) {
+            container.style.width = `${viewport.width}px`;
+            container.style.height = `${viewport.height}px`;
+        }
+        scheduleThumbWindowRender();
+    } catch {}
+}
+
+export function refreshSidebarSync() {
+    if (!PdfState.currentPdfDoc) return;
+    syncActiveThumb();
+    syncActiveOutline();
+    if (previewsPaneVisible()) scheduleThumbWindowRender();
 }
 
 function queuePageRender(pageNum: number) {
@@ -361,9 +407,10 @@ function pumpRenderQueue() {
         }
         activeRenders++;
         void renderPage(pageNum).finally(() => {
-            activeRenders--;
+            activeRenders = Math.max(0, activeRenders - 1);
             pendingRenders.delete(pageNum);
             pumpRenderQueue();
+            pumpThumbQueue();
         });
     }
 }
@@ -443,8 +490,12 @@ async function addPageLinkLayer(page: any, container: HTMLElement, viewport: any
 }
 
 function jumpToPage(pageNum: number) {
-    const target = document.getElementById(`page-container-${pageNum}`);
-    if (target) target.scrollIntoView({ behavior: 'smooth' });
+    const jump = () => {
+        const target = document.getElementById(`page-container-${pageNum}`);
+        if (target) target.scrollIntoView({ behavior: 'smooth' });
+    };
+    jump();
+    void measurePageNow(pageNum).then(jump);
 }
 
 async function resolveOutlineDest(dest: any): Promise<number | null> {
@@ -473,6 +524,7 @@ let activeOutlineRow: HTMLElement | null = null;
 
 function syncActiveOutline() {
     if (!scrollContainer || !DOM.sidebarSections) return;
+    if (DOM.sidebarSections.classList.contains('hidden')) return;
     const rows = Array.from(DOM.sidebarSections.querySelectorAll<HTMLElement>('.outline-item[data-page]'));
     if (rows.length === 0) return;
     const current = currentPageAtViewport();
@@ -603,15 +655,69 @@ function evictOutside(first: number, last: number) {
     }
 }
 
+function thumbHeightFor(pageNum: number): number {
+    const size = pageSizes.get(pageNum);
+    const aspect = thumbAspects.get(pageNum) ?? (size ? size.height / size.width : 792 / 612);
+    return Math.round(Math.max(160, getSidebarTargetWidth() - 32) * aspect);
+}
+
+function rebuildThumbLayout() {
+    if (!PdfState.currentPdfDoc || !DOM.sidebarPreviews) return;
+    const total = PdfState.currentPdfDoc.numPages;
+    const tops = new Array<number>(total);
+    let y = 0;
+    for (let i = 0; i < total; i++) {
+        tops[i] = y;
+        y += thumbHeightFor(i + 1) + THUMB_GAP;
+    }
+    thumbTops = tops;
+    DOM.sidebarPreviews.style.height = `${y + 16}px`;
+    for (const canvas of thumbElements) {
+        const pageNum = parseInt(canvas.dataset.pageNum || '0', 10);
+        canvas.style.top = `${tops[pageNum - 1] ?? 0}px`;
+    }
+}
+
+function ensureThumbMounted(pageNum: number): HTMLCanvasElement | null {
+    if (!DOM.sidebarPreviews || !PdfState.currentPdfDoc) return null;
+    const existing = DOM.sidebarPreviews.querySelector<HTMLCanvasElement>(`[data-page-num="${pageNum}"]`);
+    if (existing) return existing;
+    const total = PdfState.currentPdfDoc.numPages;
+    if (pageNum < 1 || pageNum > total) return null;
+    if (thumbTops.length !== total) rebuildThumbLayout();
+    const canvas = document.createElement('canvas');
+    canvas.className =
+        'cursor-pointer border-2 border-transparent hover:border-lavender-400 transition-colors shadow-sm rounded bg-white';
+    canvas.dataset.pageNum = String(pageNum);
+    canvas.style.position = 'absolute';
+    canvas.style.left = '0';
+    canvas.style.width = '100%';
+    canvas.style.top = `${thumbTops[pageNum - 1]}px`;
+    canvas.style.height = `${thumbHeightFor(pageNum)}px`;
+    canvas.onclick = () => {
+        const jump = () => {
+            const target = document.getElementById(`page-container-${pageNum}`);
+            if (target) target.scrollIntoView({ behavior: 'smooth' });
+        };
+        jump();
+        void measurePageNow(pageNum).then(jump);
+    };
+    DOM.sidebarPreviews.appendChild(canvas);
+    thumbElements.push(canvas);
+    return canvas;
+}
+
 export async function renderThumbnails() {
     if (!PdfState.currentPdfDoc || !DOM.sidebarPreviews) return;
 
     thumbCanvases.clear();
     cancelThumbRenders();
+    thumbElements = [];
 
     const sidebar = document.getElementById('sidebar');
     const savedScrollTop = sidebar ? sidebar.scrollTop : 0;
     DOM.sidebarPreviews.innerHTML = '';
+    DOM.sidebarPreviews.style.position = 'relative';
 
     if (sidebar) {
         sidebar.onscroll = null;
@@ -622,25 +728,7 @@ export async function renderThumbnails() {
     }
 
     const total = PdfState.currentPdfDoc.numPages;
-    DOM.sidebarPreviews.style.position = 'relative';
-
-    const thumbTargetWidth = Math.max(160, getSidebarTargetWidth() - 32);
-    const fragment = document.createDocumentFragment();
-    for (let pageNum = 1; pageNum <= total; pageNum++) {
-        const canvas = document.createElement('canvas');
-        canvas.className =
-            'mb-4 cursor-pointer border-2 border-transparent hover:border-lavender-400 transition-colors shadow-sm rounded bg-white w-full h-auto';
-        canvas.dataset.pageNum = String(pageNum);
-        const size = pageSizes.get(pageNum);
-        const aspect = size ? size.height / size.width : 792 / 612;
-        canvas.style.height = `${Math.round(thumbTargetWidth * aspect)}px`;
-        canvas.onclick = () => {
-            const target = document.getElementById(`page-container-${pageNum}`);
-            if (target) target.scrollIntoView({ behavior: 'smooth' });
-        };
-        fragment.appendChild(canvas);
-    }
-    DOM.sidebarPreviews.appendChild(fragment);
+    rebuildThumbLayout();
 
     activeThumbPage = 0;
     syncActiveThumb();
@@ -650,19 +738,21 @@ export async function renderThumbnails() {
         sidebar.addEventListener('scroll', onThumbScroll, { passive: true });
         scheduleThumbWindowRender();
     } else {
-        for (let i = 1; i <= total; i++) queueThumbRender(i);
+        for (let i = 1; i <= total; i++) {
+            ensureThumbMounted(i);
+            queueThumbRender(i);
+        }
     }
 }
 
 function thumbIndexAt(y: number): number {
-    if (!DOM.sidebarPreviews) return 0;
-    const thumbs = Array.from(DOM.sidebarPreviews.children) as HTMLElement[];
-    if (thumbs.length === 0) return 0;
+    const tops = thumbTops;
+    if (tops.length === 0) return 0;
     let lo = 0;
-    let hi = thumbs.length - 1;
+    let hi = tops.length - 1;
     while (lo < hi) {
         const mid = (lo + hi) >> 1;
-        if (thumbs[mid].offsetTop < y) lo = mid + 1;
+        if (tops[mid] < y) lo = mid + 1;
         else hi = mid;
     }
     return lo;
@@ -693,13 +783,15 @@ function scheduleThumbWindowRender() {
 
 function renderVisibleThumbs() {
     const sidebar = document.getElementById('sidebar');
-    if (!sidebar || !DOM.sidebarPreviews || DOM.sidebarPreviews.children.length === 0) return;
+    if (!sidebar || !DOM.sidebarPreviews || !PdfState.currentPdfDoc) return;
+    if (!previewsPaneVisible()) return;
+    rebuildThumbLayout();
+    const total = PdfState.currentPdfDoc.numPages;
+    if (total === 0) return;
     const first = Math.max(0, thumbIndexAt(sidebar.scrollTop) - 2);
-    const last = Math.min(
-        DOM.sidebarPreviews.children.length - 1,
-        thumbIndexAt(sidebar.scrollTop + sidebar.clientHeight) + 5,
-    );
+    const last = Math.min(total - 1, thumbIndexAt(sidebar.scrollTop + sidebar.clientHeight) + 5);
 
+    for (let i = first; i <= last; i++) ensureThumbMounted(i + 1);
     evictThumbs(first, last);
     thumbQueue = thumbQueue.filter(
         (p) => p - 1 >= first - THUMB_EVICT_RADIUS - 5 && p - 1 <= last + THUMB_EVICT_RADIUS + 5,
@@ -718,17 +810,18 @@ function queueThumbRender(pageNum: number) {
 }
 
 function pumpThumbQueue() {
-    while (thumbActive < THUMB_CONCURRENCY && thumbQueue.length > 0) {
+    while (activeRenders < RENDER_CONCURRENCY && thumbQueue.length > 0) {
         const pageNum = thumbQueue.shift()!;
         if (!thumbPending.has(pageNum)) continue;
         if (thumbCanvases.has(pageNum)) {
             thumbPending.delete(pageNum);
             continue;
         }
-        thumbActive++;
+        activeRenders++;
         void renderThumb(pageNum).finally(() => {
-            thumbActive--;
+            activeRenders = Math.max(0, activeRenders - 1);
             thumbPending.delete(pageNum);
+            pumpRenderQueue();
             pumpThumbQueue();
         });
     }
@@ -746,7 +839,12 @@ async function renderThumb(pageNum: number) {
         const viewport = page.getViewport({ scale });
         thumb.width = Math.max(1, Math.floor(viewport.width));
         thumb.height = Math.max(1, Math.floor(viewport.height));
-        thumb.style.height = `${Math.max(1, Math.floor(viewport.height / getOutputScale()))}px`;
+        const cssHeight = Math.max(1, Math.floor(viewport.height / getOutputScale()));
+        thumbAspects.set(pageNum, baseViewport.height / baseViewport.width);
+        if (thumb.style.height !== `${cssHeight}px`) {
+            thumb.style.height = `${cssHeight}px`;
+            scheduleThumbWindowRender();
+        }
         const ctx = thumb.getContext('2d');
         if (!ctx) return;
         const task = page.render({ canvasContext: ctx, viewport });
@@ -763,12 +861,13 @@ async function renderThumb(pageNum: number) {
 }
 
 function evictThumbs(first: number, last: number) {
-    for (const [pageNum, thumb] of thumbCanvases) {
-        if (pageNum - 1 < first - THUMB_EVICT_RADIUS || pageNum - 1 > last + THUMB_EVICT_RADIUS) {
-            thumb.width = 0;
-            thumb.height = 0;
-            thumbCanvases.delete(pageNum);
-        }
+    for (let i = thumbElements.length - 1; i >= 0; i--) {
+        const canvas = thumbElements[i];
+        const pageNum = parseInt(canvas.dataset.pageNum || '0', 10);
+        if (pageNum - 1 >= first - THUMB_EVICT_RADIUS && pageNum - 1 <= last + THUMB_EVICT_RADIUS) continue;
+        canvas.remove();
+        thumbElements.splice(i, 1);
+        thumbCanvases.delete(pageNum);
     }
     for (const [pageNum, entry] of thumbPending) {
         if (pageNum - 1 < first - THUMB_EVICT_RADIUS - 5 || pageNum - 1 > last + THUMB_EVICT_RADIUS + 5) {
