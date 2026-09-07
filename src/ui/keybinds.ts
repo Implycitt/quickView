@@ -1,4 +1,3 @@
-import { Domain } from 'domain';
 import { DOM, toggleSidebar, toggleKeybindsModal, setSidebarTab } from '../ui.js';
 
 export function initKeybinds() {
@@ -7,7 +6,7 @@ export function initKeybinds() {
             return;
         }
 
-        var keyPressed = e.key.toLowerCase();
+        const keyPressed = e.key.toLowerCase();
 
         // Show keybinds
         if (keyPressed === '/') {
@@ -37,7 +36,7 @@ export function initKeybinds() {
 
         // sections - previews toggle
         if (keyPressed === 'o') {
-            let previews = DOM.sidebarPreviews.checkVisibility();
+            const previews = DOM.sidebarPreviews.checkVisibility();
             e.preventDefault();
             if (previews) {
                 setSidebarTab('sections');
@@ -45,17 +44,17 @@ export function initKeybinds() {
                 setSidebarTab('previews');
             }
         }
-        
+
         // zoom in
         if (keyPressed === 'z') {
             e.preventDefault();
-            DOM.zoomInBtn?.click(); 
+            DOM.zoomInBtn?.click();
         }
-        
+
         // zoom out
         if (keyPressed === 'x') {
             e.preventDefault();
-            DOM.zoomOutBtn?.click(); 
+            DOM.zoomOutBtn?.click();
         }
 
         // pick file
@@ -71,13 +70,13 @@ export function initKeybinds() {
             DOM.pageCounter?.focus();
             DOM.pageCounter?.select();
         }
-        
+
         // scroll up
         if (keyPressed === 'j') {
             e.preventDefault();
             performScroll(1);
         }
-        
+
         // scroll down
         if (keyPressed === 'k') {
             e.preventDefault();
@@ -93,10 +92,10 @@ function performScroll(direction: number) {
     if (!container) return;
 
     const isSnapMode = container.classList.contains('snap-mandatory');
-    const amount = isSnapMode ? (container.clientHeight * 0.8) : 120;
+    const amount = isSnapMode ? container.clientHeight * 0.8 : 120;
 
-    container.scrollBy({ 
-        top: amount * direction, 
-        behavior: 'smooth' 
+    container.scrollBy({
+        top: amount * direction,
+        behavior: 'smooth',
     });
 }

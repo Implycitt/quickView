@@ -1,121 +1,279 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: file: https: http:; frame-src blob:;">
-    <title>QuickView</title>
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <script type="module" src="../index.ts"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-</head>
-<body class="bg-gray-900 text-gray-100 font-sans h-screen overflow-hidden flex flex-col selection:bg-lavender-500 selection:text-white">
-
-    <header class="bg-gray-800 border-b border-gray-700 px-4 py-3 flex justify-between items-center shadow-md z-10">
-        <div class="flex items-center gap-3">
-            <button id="sidebar-toggle" class="p-2 text-gray-400 hover:bg-gray-700 hover:text-lavender-400 rounded-lg transition-colors cursor-pointer">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
-                </svg>
-            </button>
-
-            <button id="keybinds-toggle" title="Show Keybinds (/)" class="p-2 text-gray-400 hover:bg-gray-700 hover:text-lavender-400 rounded-lg transition-colors cursor-pointer">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 11h.01M16 11h.01M8 11h.01M12 15h.01M16 15h.01M8 15h.01M4 7h16c1.1 0 2 .9 2 2v10c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V9c0-1.1.9-2 2-2z" />
-                </svg>
-            </button>
-            <h1 class="text-xl font-bold text-gray-100 tracking-tight">QuickView</h1>
-        </div>
-        
-        <div class="flex items-center">
-            
-            <div id="pdf-tools" class="hidden flex items-center border-r border-gray-600 mr-4 pr-4 transition-opacity">
-                
-                <button id="toggle-scroll-mode" class="text-xs font-semibold bg-gray-700 hover:bg-gray-600 text-gray-200 px-3 py-1.5 rounded transition-colors mr-4 shadow-sm cursor-pointer border border-gray-600">
-                    Mode: Snap
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta
+            http-equiv="Content-Security-Policy"
+            content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: file: https: http:; frame-src blob:;"
+        />
+        <title>QuickView</title>
+        <script type="module" src="../index.ts"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    </head>
+    <body
+        class="bg-gray-900 text-gray-100 font-sans h-screen overflow-hidden flex flex-col selection:bg-lavender-500 selection:text-white"
+    >
+        <header class="bg-gray-800 border-b border-gray-700 px-4 py-3 flex justify-between items-center shadow-md z-10">
+            <div class="flex items-center gap-3">
+                <button
+                    id="sidebar-toggle"
+                    class="p-2 text-gray-400 hover:bg-gray-700 hover:text-lavender-400 rounded-lg transition-colors cursor-pointer"
+                >
+                    <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        class="h-6 w-6"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        stroke-width="2"
+                    >
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+                    </svg>
                 </button>
-                
-                <div class="flex items-center bg-gray-900 rounded-lg shadow-inner overflow-hidden border border-gray-700">
-                    <button id="zoom-out" class="p-2 text-gray-400 hover:text-lavender-400 hover:bg-gray-800 transition-colors cursor-pointer">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                            <path fill-rule="evenodd" d="M3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd" />
-                        </svg>
-                    </button>
-                    <input type="text" id="zoom-level" class="text-xs font-mono font-medium text-gray-300 w-14 text-center bg-gray-900 border border-transparent rounded outline-none focus:border-lavender-400 focus:bg-gray-800 transition-colors" value="100%">
-                    <button id="zoom-in" class="p-2 text-gray-400 hover:text-lavender-400 hover:bg-gray-800 transition-colors cursor-pointer">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                            <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
-                        </svg>
-                    </button>
-                </div>
 
-                <div class="flex items-center ml-4">
-                    <span class="text-xs font-semibold text-gray-300 mr-2">Page</span>
-                    <div class="flex items-center bg-gray-900 rounded-lg shadow-inner overflow-hidden border border-gray-700">
-                        <input type="text" id="page-counter" inputmode="numeric" title="Jump to page (Enter to go, G to focus)" class="text-xs font-mono font-medium text-gray-300 w-12 text-center bg-gray-900 outline-none focus:text-lavender-400 transition-colors" value="1">
-                        <span id="page-total" class="text-xs font-mono text-gray-500 pr-2">/ 1</span>
-                        <div class="flex flex-col border-l border-gray-700/80">
-                            <button id="page-prev" title="Previous page" class="p-0.5 px-1.5 text-gray-400 hover:text-lavender-400 hover:bg-gray-800 transition-colors cursor-pointer border-b border-gray-700/80 leading-none">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" clip-rule="evenodd" /></svg>
-                            </button>
-                            <button id="page-next" title="Next page" class="p-0.5 px-1.5 text-gray-400 hover:text-lavender-400 hover:bg-gray-800 transition-colors cursor-pointer leading-none">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
-                            </button>
+                <button
+                    id="keybinds-toggle"
+                    title="Show Keybinds (/)"
+                    class="p-2 text-gray-400 hover:bg-gray-700 hover:text-lavender-400 rounded-lg transition-colors cursor-pointer"
+                >
+                    <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        class="h-6 w-6"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        stroke-width="2"
+                    >
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            d="M12 11h.01M16 11h.01M8 11h.01M12 15h.01M16 15h.01M8 15h.01M4 7h16c1.1 0 2 .9 2 2v10c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V9c0-1.1.9-2 2-2z"
+                        />
+                    </svg>
+                </button>
+                <h1 class="text-xl font-bold text-gray-100 tracking-tight">QuickView</h1>
+            </div>
+
+            <div class="flex items-center">
+                <div
+                    id="pdf-tools"
+                    class="hidden flex items-center border-r border-gray-600 mr-4 pr-4 transition-opacity"
+                >
+                    <button
+                        id="toggle-scroll-mode"
+                        class="text-xs font-semibold bg-gray-700 hover:bg-gray-600 text-gray-200 px-3 py-1.5 rounded transition-colors mr-4 shadow-sm cursor-pointer border border-gray-600"
+                    >
+                        Mode: Snap
+                    </button>
+
+                    <div
+                        class="flex items-center bg-gray-900 rounded-lg shadow-inner overflow-hidden border border-gray-700"
+                    >
+                        <button
+                            id="zoom-out"
+                            class="p-2 text-gray-400 hover:text-lavender-400 hover:bg-gray-800 transition-colors cursor-pointer"
+                        >
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                class="h-4 w-4"
+                                viewBox="0 0 20 20"
+                                fill="currentColor"
+                            >
+                                <path
+                                    fill-rule="evenodd"
+                                    d="M3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z"
+                                    clip-rule="evenodd"
+                                />
+                            </svg>
+                        </button>
+                        <input
+                            type="text"
+                            id="zoom-level"
+                            class="text-xs font-mono font-medium text-gray-300 w-14 text-center bg-gray-900 border border-transparent rounded outline-none focus:border-lavender-400 focus:bg-gray-800 transition-colors"
+                            value="100%"
+                        />
+                        <button
+                            id="zoom-in"
+                            class="p-2 text-gray-400 hover:text-lavender-400 hover:bg-gray-800 transition-colors cursor-pointer"
+                        >
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                class="h-4 w-4"
+                                viewBox="0 0 20 20"
+                                fill="currentColor"
+                            >
+                                <path
+                                    fill-rule="evenodd"
+                                    d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z"
+                                    clip-rule="evenodd"
+                                />
+                            </svg>
+                        </button>
+                    </div>
+
+                    <div class="flex items-center ml-4">
+                        <span class="text-xs font-semibold text-gray-300 mr-2">Page</span>
+                        <div
+                            class="flex items-center bg-gray-900 rounded-lg shadow-inner overflow-hidden border border-gray-700"
+                        >
+                            <input
+                                type="text"
+                                id="page-counter"
+                                inputmode="numeric"
+                                title="Jump to page (Enter to go, G to focus)"
+                                class="text-xs font-mono font-medium text-gray-300 w-12 text-center bg-gray-900 outline-none focus:text-lavender-400 transition-colors"
+                                value="1"
+                            />
+                            <span id="page-total" class="text-xs font-mono text-gray-500 pr-2">/ 1</span>
+                            <div class="flex flex-col border-l border-gray-700/80">
+                                <button
+                                    id="page-prev"
+                                    title="Previous page"
+                                    class="p-0.5 px-1.5 text-gray-400 hover:text-lavender-400 hover:bg-gray-800 transition-colors cursor-pointer border-b border-gray-700/80 leading-none"
+                                >
+                                    <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        class="h-3 w-3"
+                                        viewBox="0 0 20 20"
+                                        fill="currentColor"
+                                    >
+                                        <path
+                                            fill-rule="evenodd"
+                                            d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z"
+                                            clip-rule="evenodd"
+                                        />
+                                    </svg>
+                                </button>
+                                <button
+                                    id="page-next"
+                                    title="Next page"
+                                    class="p-0.5 px-1.5 text-gray-400 hover:text-lavender-400 hover:bg-gray-800 transition-colors cursor-pointer leading-none"
+                                >
+                                    <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        class="h-3 w-3"
+                                        viewBox="0 0 20 20"
+                                        fill="currentColor"
+                                    >
+                                        <path
+                                            fill-rule="evenodd"
+                                            d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
+                                            clip-rule="evenodd"
+                                        />
+                                    </svg>
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
 
-            <button class="file-picker-btn bg-lavender-600 hover:bg-lavender-500 text-white font-medium py-2 px-4 rounded-lg transition-colors shadow-sm cursor-pointer">
-                Choose File
-            </button>
+                <button
+                    class="file-picker-btn bg-lavender-600 hover:bg-lavender-500 text-white font-medium py-2 px-4 rounded-lg transition-colors shadow-sm cursor-pointer"
+                >
+                    Choose File
+                </button>
+            </div>
+        </header>
+
+        <div class="flex h-screen w-screen overflow-hidden">
+            <aside
+                id="sidebar"
+                class="transition-[width] duration-300 h-full bg-gray-800 shrink-0 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] scrollbar-none"
+                style="width: 0px"
+            >
+                <div id="sidebar-tabs" class="hidden sticky top-0 z-10 flex gap-1 p-2 bg-gray-800/95 backdrop-blur">
+                    <button id="tab-previews" class="sidebar-tab sidebar-tab-active">Previews</button>
+                    <button id="tab-sections" class="sidebar-tab">Sections</button>
+                </div>
+                <div id="sidebar-previews" class="p-4 w-full"></div>
+                <div id="sidebar-sections" class="p-4 w-full hidden"></div>
+            </aside>
+
+            <div
+                id="sidebar-resizer"
+                class="w-1 cursor-col-resize hover:bg-lavender-400 transition-colors bg-gray-700 z-10 shrink-0"
+            ></div>
+
+            <main
+                id="main-content"
+                class="flex-1 overflow-y-auto flex justify-center transition-colors duration-300 bg-gray-900 relative [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] scrollbar-none"
+            >
+                <div class="w-full max-w-5xl p-8 my-auto text-center" id="empty-state">
+                    <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        class="h-16 w-16 mx-auto text-gray-600 mb-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                    >
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                        />
+                    </svg>
+                    <h2 class="text-2xl font-bold text-gray-400 mb-2">No Document Selected</h2>
+                    <p class="text-gray-500">Click the button at the top to load a Markdown or PDF file.</p>
+                </div>
+            </main>
         </div>
-    </header>
 
-    <div class="flex h-screen w-screen overflow-hidden">
-        
-        <aside id="sidebar" class="transition-[width] duration-300 h-full bg-gray-800 shrink-0 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] scrollbar-none" style="width: 0px;">
-            <div id="sidebar-tabs" class="hidden sticky top-0 z-10 flex gap-1 p-2 bg-gray-800/95 backdrop-blur">
-                <button id="tab-previews" class="sidebar-tab sidebar-tab-active">Previews</button>
-                <button id="tab-sections" class="sidebar-tab">Sections</button>
+        <div
+            id="keybinds-modal"
+            class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-md transition-opacity"
+        >
+            <div class="bg-gray-800 rounded-lg shadow-xl p-6 w-96 max-w-[90%] border border-gray-700">
+                <div class="flex justify-between items-center mb-4 border-b border-gray-700 pb-2">
+                    <h2 class="text-xl font-bold text-gray-100">Keyboard Shortcuts</h2>
+                    <button id="close-keybinds" class="text-gray-400 hover:text-lavender-400 text-2xl leading-none">
+                        &times;
+                    </button>
+                </div>
+                <ul class="space-y-3 text-sm text-gray-300">
+                    <li class="flex justify-between items-center">
+                        <span>Toggle Scroll Mode</span>
+                        <kbd class="bg-gray-900 border border-gray-600 px-2 py-1 rounded font-mono">M</kbd>
+                    </li>
+                    <li class="flex justify-between items-center">
+                        <span>Toggle Sidebar</span>
+                        <kbd class="bg-gray-900 border border-gray-600 px-2 py-1 rounded font-mono">S</kbd>
+                    </li>
+                    <li class="flex justify-between items-center">
+                        <span>Toggle Sections/Previews</span>
+                        <kbd class="bg-gray-900 border border-gray-600 px-2 py-1 rounded font-mono">O</kbd>
+                    </li>
+                    <li class="flex justify-between items-center">
+                        <span>Zoom In</span>
+                        <kbd class="bg-gray-900 border border-gray-600 px-2 py-1 rounded font-mono">Z</kbd>
+                    </li>
+                    <li class="flex justify-between items-center">
+                        <span>Zoom Out</span>
+                        <kbd class="bg-gray-900 border border-gray-600 px-2 py-1 rounded font-mono">X</kbd>
+                    </li>
+                    <li class="flex justify-between items-center">
+                        <span>Open File</span>
+                        <kbd class="bg-gray-900 border border-gray-600 px-2 py-1 rounded font-mono">F</kbd>
+                    </li>
+                    <li class="flex justify-between items-center">
+                        <span>Jump to Page</span>
+                        <kbd class="bg-gray-900 border border-gray-600 px-2 py-1 rounded font-mono">G</kbd>
+                    </li>
+                    <li class="flex justify-between items-center">
+                        <span>Scroll Up</span>
+                        <kbd class="bg-gray-900 border border-gray-600 px-2 py-1 rounded font-mono">J</kbd>
+                    </li>
+                    <li class="flex justify-between items-center">
+                        <span>Scroll Down</span>
+                        <kbd class="bg-gray-900 border border-gray-600 px-2 py-1 rounded font-mono">K</kbd>
+                    </li>
+                    <li class="flex justify-between items-center">
+                        <span>Show Keybinds</span>
+                        <kbd class="bg-gray-900 border border-gray-600 px-2 py-1 rounded font-mono">/</kbd>
+                    </li>
+                </ul>
             </div>
-            <div id="sidebar-previews" class="p-4 w-full"></div>
-            <div id="sidebar-sections" class="p-4 w-full hidden"></div>
-        </aside>
-
-        <div id="sidebar-resizer" class="w-1 cursor-col-resize hover:bg-lavender-400 transition-colors bg-gray-700 z-10 shrink-0"></div>
-
-        <main id="main-content" class="flex-1 overflow-y-auto flex justify-center transition-colors duration-300 bg-gray-900 relative [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] scrollbar-none">
-            <div class="w-full max-w-5xl p-8 my-auto text-center" id="empty-state">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mx-auto text-gray-600 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                <h2 class="text-2xl font-bold text-gray-400 mb-2">No Document Selected</h2>
-                <p class="text-gray-500">Click the button at the top to load a Markdown or PDF file.</p>
-            </div>
-        </main>
-    </div>
-
-    <div id="keybinds-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-md transition-opacity">
-        <div class="bg-gray-800 rounded-lg shadow-xl p-6 w-96 max-w-[90%] border border-gray-700">
-            <div class="flex justify-between items-center mb-4 border-b border-gray-700 pb-2">
-                <h2 class="text-xl font-bold text-gray-100">Keyboard Shortcuts</h2>
-                <button id="close-keybinds" class="text-gray-400 hover:text-lavender-400 text-2xl leading-none">&times;</button>
-            </div>
-            <ul class="space-y-3 text-sm text-gray-300">
-                <li class="flex justify-between items-center"><span>Toggle Scroll Mode</span> <kbd class="bg-gray-900 border border-gray-600 px-2 py-1 rounded font-mono">M</kbd></li>
-                <li class="flex justify-between items-center"><span>Toggle Sidebar</span> <kbd class="bg-gray-900 border border-gray-600 px-2 py-1 rounded font-mono">S</kbd></li>
-                <li class="flex justify-between items-center"><span>Toggle Sections/Previews</span> <kbd class="bg-gray-900 border border-gray-600 px-2 py-1 rounded font-mono">O</kbd></li>
-                <li class="flex justify-between items-center"><span>Zoom In</span> <kbd class="bg-gray-900 border border-gray-600 px-2 py-1 rounded font-mono">Z</kbd></li>
-                <li class="flex justify-between items-center"><span>Zoom Out</span> <kbd class="bg-gray-900 border border-gray-600 px-2 py-1 rounded font-mono">X</kbd></li>
-                <li class="flex justify-between items-center"><span>Open File</span> <kbd class="bg-gray-900 border border-gray-600 px-2 py-1 rounded font-mono">F</kbd></li>
-                <li class="flex justify-between items-center"><span>Jump to Page</span> <kbd class="bg-gray-900 border border-gray-600 px-2 py-1 rounded font-mono">G</kbd></li>
-                <li class="flex justify-between items-center"><span>Scroll Up</span> <kbd class="bg-gray-900 border border-gray-600 px-2 py-1 rounded font-mono">J</kbd></li>
-                <li class="flex justify-between items-center"><span>Scroll Down</span> <kbd class="bg-gray-900 border border-gray-600 px-2 py-1 rounded font-mono">K</kbd></li>
-                <li class="flex justify-between items-center"><span>Show Keybinds</span> <kbd class="bg-gray-900 border border-gray-600 px-2 py-1 rounded font-mono">/</kbd></li>
-            </ul>
         </div>
-    </div>
-
-</body>
+    </body>
 </html>

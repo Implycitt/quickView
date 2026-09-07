@@ -47,9 +47,9 @@ export function initDOM() {
 let savedSidebarWidth = '280px';
 export function toggleSidebar(forceState?: 'open' | 'closed') {
     if (!DOM.sidebar) return;
-    
+
     const isClosed = DOM.sidebar.style.width === '0px';
-    
+
     if (forceState === 'open' || (!forceState && isClosed)) {
         DOM.sidebar.style.width = savedSidebarWidth;
     } else {
@@ -79,15 +79,19 @@ export function getSidebarTargetWidth(): number {
 export function updateScrollModeClasses(isSnapMode: boolean) {
     const scrollContainer = document.getElementById('pdf-scroll-container');
     if (!scrollContainer || !DOM.toggleScrollModeBtn) return;
-    
+
     DOM.toggleScrollModeBtn.innerText = `Mode: ${isSnapMode ? 'Snap' : 'Free'}`;
-    
+
     if (isSnapMode) {
         scrollContainer.classList.add('snap-y', 'snap-mandatory');
-        scrollContainer.querySelectorAll<HTMLElement>('.pdf-page-container').forEach(w => w.classList.add('snap-center'));
+        scrollContainer
+            .querySelectorAll<HTMLElement>('.pdf-page-container')
+            .forEach((w) => w.classList.add('snap-center'));
     } else {
         scrollContainer.classList.remove('snap-y', 'snap-mandatory');
-        scrollContainer.querySelectorAll<HTMLElement>('.pdf-page-container').forEach(w => w.classList.remove('snap-center'));
+        scrollContainer
+            .querySelectorAll<HTMLElement>('.pdf-page-container')
+            .forEach((w) => w.classList.remove('snap-center'));
     }
 }
 
@@ -99,7 +103,7 @@ export function initSidebarResizer() {
 
     let isResizing = false;
 
-    resizer.addEventListener('mousedown', (e) => {
+    resizer.addEventListener('mousedown', () => {
         isResizing = true;
         document.body.style.cursor = 'col-resize';
         document.body.style.userSelect = 'none';
@@ -108,9 +112,9 @@ export function initSidebarResizer() {
 
     document.addEventListener('mousemove', (e) => {
         if (!isResizing) return;
-        
+
         const newWidth = e.clientX;
-        
+
         if (newWidth > 150 && newWidth < 600) {
             sidebar.style.width = `${newWidth}px`;
         }

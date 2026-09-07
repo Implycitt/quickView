@@ -1,17 +1,24 @@
 import './ui/main.css';
-import { DOM, initDOM, toggleSidebar, updateScrollModeClasses, initSidebarResizer, toggleKeybindsModal, setSidebarTab } from './ui.js';
+import {
+    DOM,
+    initDOM,
+    toggleSidebar,
+    updateScrollModeClasses,
+    initSidebarResizer,
+    toggleKeybindsModal,
+    setSidebarTab,
+} from './ui.js';
 import { renderAllMainPages, renderThumbnails, goToPage, PdfState } from './rendering/pdfRenderer.js';
 import { renderFileContent } from './rendering/fileHandler.js';
 import { initKeybinds } from './ui/keybinds.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     initDOM();
-    initSidebarResizer(); 
+    initSidebarResizer();
     initKeybinds();
 
-    if (DOM.closeKeybindsBtn || DOM.keybindsToggleBtn) {
-        DOM.closeKeybindsBtn.addEventListener('click', () => toggleKeybindsModal());
-    }
+    if (DOM.closeKeybindsBtn) DOM.closeKeybindsBtn.addEventListener('click', () => toggleKeybindsModal());
+    if (DOM.keybindsToggleBtn) DOM.keybindsToggleBtn.addEventListener('click', () => toggleKeybindsModal());
 
     window.addEventListener('click', (e) => {
         if (e.target === DOM.keybindsModal) {
@@ -29,7 +36,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (DOM.tabSectionsBtn) {
         DOM.tabSectionsBtn.addEventListener('click', () => setSidebarTab('sections'));
     }
-    
+
     if (DOM.toggleScrollModeBtn) {
         DOM.toggleScrollModeBtn.addEventListener('click', () => {
             PdfState.isSnapMode = !PdfState.isSnapMode;
@@ -101,7 +108,7 @@ document.addEventListener('DOMContentLoaded', () => {
         zoomInput.addEventListener('change', (e) => {
             const target = e.target as HTMLInputElement;
             const parsedZoom = parseFloat(target.value.replace('%', ''));
-            
+
             if (!isNaN(parsedZoom) && parsedZoom > 10 && parsedZoom < 1000) {
                 PdfState.zoomMode = 'manual';
                 PdfState.currentScale = parsedZoom / 100;
@@ -119,7 +126,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const content = await window.electronAPI.pickAndReadFile();
                 if (content) await renderFileContent(content);
             } catch (error) {
-                console.error("Failed to read file", error);
+                console.error('Failed to read file', error);
                 if (DOM.mainContentNode) {
                     DOM.mainContentNode.innerHTML = `<p class="text-red-500 font-medium m-8">Error reading file.</p>`;
                 }

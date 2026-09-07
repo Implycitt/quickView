@@ -1,2 +1,2 @@
 declare module '*.css';
-declare module 'markdown-it-texmath'
+declare module 'markdown-it-texmath';

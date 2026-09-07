@@ -1,13 +1,13 @@
 import { DOM, getSidebarTargetWidth, updateScrollModeClasses } from '../ui.js';
 
-window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
 export const PdfState = {
-    currentPdfUrl: null as string | null,
     currentPdfDoc: null as any,
     currentScale: 1.0,
     isSnapMode: true,
-    zoomMode: 'auto' as 'auto' | 'manual'
+    zoomMode: 'auto' as 'auto' | 'manual',
 };
 
 const MAX_OUTPUT_SCALE = 2;
@@ -77,7 +77,25 @@ function syncActiveThumb() {
     const prev = DOM.sidebarPreviews.querySelector<HTMLElement>('.thumb-active');
     if (prev) prev.classList.remove('thumb-active');
     const thumb = DOM.sidebarPreviews.querySelector<HTMLElement>(`[data-page-num="${page}"]`);
-    if (thumb) thumb.classList.add('thumb-active');
+    if (thumb) {
+        thumb.classList.add('thumb-active');
+        scrollThumbIntoView(thumb);
+    }
+}
+
+function scrollThumbIntoView(thumb: HTMLElement) {
+    const sidebar = document.getElementById('sidebar');
+    if (!sidebar) return;
+    const viewTop = sidebar.scrollTop;
+    const viewBottom = viewTop + sidebar.clientHeight;
+    const thumbTop = thumb.offsetTop;
+    const thumbBottom = thumbTop + thumb.offsetHeight;
+    if (thumbTop < viewTop || thumbBottom > viewBottom) {
+        sidebar.scrollTo({
+            top: Math.max(0, thumbTop - (sidebar.clientHeight - thumb.offsetHeight) / 2),
+            behavior: 'smooth',
+        });
+    }
 }
 
 function restoreScrollPos(pos: { page: number; fraction: number } | null) {
@@ -104,7 +122,9 @@ function getOutputScale(): number {
 
 function cancelPendingRenders() {
     for (const { task } of pendingRenders.values()) {
-        try { task?.cancel(); } catch { /* already finished */ }
+        try {
+            task?.cancel();
+        } catch {}
     }
     pendingRenders.clear();
     renderQueue = [];
@@ -113,11 +133,22 @@ function cancelPendingRenders() {
 
 function cancelThumbRenders() {
     for (const { task } of thumbPending.values()) {
-        try { task?.cancel(); } catch { /* already finished */ }
+        try {
+            task?.cancel();
+        } catch {}
     }
     thumbPending.clear();
     thumbQueue = [];
     thumbActive = 0;
+}
+
+export function resetPdfState() {
+    cancelThumbRenders();
+    thumbCanvases.clear();
+    savedScrollPos = null;
+    PdfState.currentPdfDoc = null;
+    PdfState.zoomMode = 'auto';
+    resetViewer();
 }
 
 function resetViewer() {
@@ -262,9 +293,7 @@ function renderVisibleWindow() {
     const last = Math.min(pageContainers.length, pageAtOffset(scrollTop + clientHeight) + RENDER_AHEAD_PAGES);
 
     evictOutside(first, last);
-    renderQueue = renderQueue.filter(
-        (p) => p >= first - EVICT_BEHIND_PAGES - 2 && p <= last + EVICT_AHEAD_PAGES + 2
-    );
+    renderQueue = renderQueue.filter((p) => p >= first - EVICT_BEHIND_PAGES - 2 && p <= last + EVICT_AHEAD_PAGES + 2);
 
     for (let pageNum = first; pageNum <= last; pageNum++) {
         queuePageRender(pageNum);
@@ -290,8 +319,8 @@ async function measureAllPages(version: number) {
             const end = Math.min(start + MEASURE_CHUNK, total + 1);
             const pages = await Promise.all(
                 Array.from({ length: end - start }, (_, i) =>
-                    PdfState.currentPdfDoc.getPage(start + i).catch(() => null)
-                )
+                    PdfState.currentPdfDoc.getPage(start + i).catch(() => null),
+                ),
             );
             for (let i = 0; i < pages.length; i++) {
                 if (version !== viewerVersion) return;
@@ -410,9 +439,7 @@ async function addPageLinkLayer(page: any, container: HTMLElement, viewport: any
             layer.appendChild(el);
         }
         container.appendChild(layer);
-    } catch {
-        /* annotations unsupported or missing */
-    }
+    } catch {}
 }
 
 function jumpToPage(pageNum: number) {
@@ -437,9 +464,7 @@ async function resolveOutlineDest(dest: any): Promise<number | null> {
                 return Math.min(PdfState.currentPdfDoc.numPages, Math.max(1, Math.round(ref)));
             }
         }
-    } catch {
-        /* unresolvable destination */
-    }
+    } catch {}
     return null;
 }
 
@@ -569,7 +594,9 @@ function evictOutside(first: number, last: number) {
     }
     for (const [pageNum, entry] of pendingRenders) {
         if (pageNum < first - EVICT_BEHIND_PAGES - 2 || pageNum > last + EVICT_AHEAD_PAGES + 2) {
-            try { entry.task?.cancel(); } catch { /* already finished */ }
+            try {
+                entry.task?.cancel();
+            } catch {}
             entry.canvas?.remove();
             pendingRenders.delete(pageNum);
         }
@@ -668,12 +695,14 @@ function renderVisibleThumbs() {
     const sidebar = document.getElementById('sidebar');
     if (!sidebar || !DOM.sidebarPreviews || DOM.sidebarPreviews.children.length === 0) return;
     const first = Math.max(0, thumbIndexAt(sidebar.scrollTop) - 2);
-    const last = Math.min(DOM.sidebarPreviews.children.length - 1, thumbIndexAt(sidebar.scrollTop + sidebar.clientHeight) + 5);
-
+    const last = Math.min(
+        DOM.sidebarPreviews.children.length - 1,
+        thumbIndexAt(sidebar.scrollTop + sidebar.clientHeight) + 5,
+    );
 
     evictThumbs(first, last);
     thumbQueue = thumbQueue.filter(
-        (p) => p - 1 >= first - THUMB_EVICT_RADIUS - 5 && p - 1 <= last + THUMB_EVICT_RADIUS + 5
+        (p) => p - 1 >= first - THUMB_EVICT_RADIUS - 5 && p - 1 <= last + THUMB_EVICT_RADIUS + 5,
     );
 
     for (let pageNum = first + 1; pageNum <= last + 1; pageNum++) {
@@ -712,7 +741,7 @@ async function renderThumb(pageNum: number) {
         const page = await PdfState.currentPdfDoc.getPage(pageNum);
         if (!thumb.isConnected || !PdfState.currentPdfDoc) return;
         const baseViewport = page.getViewport({ scale: 1 });
-        const targetWidth = Math.max(160, getSidebarTargetWidth() - 32); 
+        const targetWidth = Math.max(160, getSidebarTargetWidth() - 32);
         const scale = (targetWidth / baseViewport.width) * getOutputScale();
         const viewport = page.getViewport({ scale });
         thumb.width = Math.max(1, Math.floor(viewport.width));
@@ -743,7 +772,9 @@ function evictThumbs(first: number, last: number) {
     }
     for (const [pageNum, entry] of thumbPending) {
         if (pageNum - 1 < first - THUMB_EVICT_RADIUS - 5 || pageNum - 1 > last + THUMB_EVICT_RADIUS + 5) {
-            try { entry.task?.cancel(); } catch { /* already finished */ }
+            try {
+                entry.task?.cancel();
+            } catch {}
             thumbPending.delete(pageNum);
         }
     }

@@ -1,6 +1,6 @@
 process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = 'true';
 
-import { app, BrowserWindow, ipcMain, dialog, Menu } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, Menu, shell } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -33,17 +33,17 @@ function setupFileWatcher(targetPath: string, webContents: Electron.WebContents)
     if (activeWatchedPath) {
         fs.unwatchFile(activeWatchedPath);
     }
-    
+
     activeWatchedPath = targetPath;
 
     fs.watchFile(targetPath, { interval: 300 }, async (curr, prev) => {
         if (curr.mtimeMs !== prev.mtimeMs) {
             try {
-                await new Promise(resolve => setTimeout(resolve, 50));
+                await new Promise((resolve) => setTimeout(resolve, 50));
                 const payload = await getFilePayload(targetPath);
                 webContents.send('file-updated', payload);
             } catch (err) {
-                console.error("[Main] Error re-reading file on update:", err);
+                console.error('[Main] Error re-reading file on update:', err);
             }
         }
     });
@@ -52,13 +52,13 @@ function setupFileWatcher(targetPath: string, webContents: Electron.WebContents)
 ipcMain.handle('file:pick-and-read', async (event) => {
     const { canceled, filePaths } = await dialog.showOpenDialog({
         properties: ['openFile'],
-        filters: [{ name: 'Documents', extensions: ['md', 'pdf'] }]
+        filters: [{ name: 'Documents', extensions: ['md', 'pdf'] }],
     });
 
     if (canceled || filePaths.length === 0) return null;
 
     const filePath = filePaths[0];
-    
+
     setupFileWatcher(filePath, event.sender);
     return await getFilePayload(filePath);
 });
@@ -73,7 +73,21 @@ function createWindow() {
             contextIsolation: true,
             nodeIntegration: false,
         },
-        icon: path.join(__dirname, '../assets/icons/icon.ico')
+        icon: path.join(__dirname, '../assets/icons/icon.ico'),
+    });
+
+    win.webContents.setWindowOpenHandler(({ url }) => {
+        if (url.startsWith('http:') || url.startsWith('https:')) {
+            shell.openExternal(url);
+        }
+        return { action: 'deny' };
+    });
+
+    win.webContents.on('will-navigate', (event, url) => {
+        event.preventDefault();
+        if (url.startsWith('http:') || url.startsWith('https:')) {
+            shell.openExternal(url);
+        }
     });
 
     win.webContents.on('did-finish-load', async () => {
@@ -83,7 +97,7 @@ function createWindow() {
                 const payload = await getFilePayload(cliFilePath);
                 win.webContents.send('file-updated', payload);
             } catch (err) {
-                console.error("Failed to load CLI file:", err);
+                console.error('Failed to load CLI file:', err);
             }
         }
     });

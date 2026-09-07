@@ -3,8 +3,6 @@ export interface FileResponse {
     content: any;
     path: string;
     name: string;
-    binary: Uint8Array;
-    text: string;
 }
 
 declare global {
@@ -13,7 +11,6 @@ declare global {
             pickAndReadFile: () => Promise<FileResponse | null>;
             onFileUpdated: (callback: (data: FileResponse) => void) => void;
         };
-        marked: any;
         pdfjsLib: any;
     }
 }
