@@ -119,6 +119,7 @@ export function initSidebarResizer() {
 
         if (newWidth > 150 && newWidth < 600) {
             sidebar.style.width = `${newWidth}px`;
+            window.dispatchEvent(new Event('qv:sidebar-resized'));
         }
     });
 

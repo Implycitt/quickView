@@ -156,4 +156,14 @@ document.addEventListener('DOMContentLoaded', () => {
             renderThumbnails();
         }, 150);
     });
+
+    let sidebarDragTimer: any = null;
+    window.addEventListener('qv:sidebar-resized', () => {
+        if (!PdfState.currentPdfDoc) return;
+        if (sidebarDragTimer) clearTimeout(sidebarDragTimer);
+        sidebarDragTimer = setTimeout(() => {
+            sidebarDragTimer = null;
+            void renderThumbnails();
+        }, 150);
+    });
 });

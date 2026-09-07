@@ -19,6 +19,7 @@ const RENDER_CONCURRENCY = 3;
 const MEASURE_CHUNK = 15;
 const THUMB_EVICT_RADIUS = 40;
 const THUMB_GAP = 16;
+const THUMB_INSET = 16;
 
 let scrollContainer: HTMLElement | null = null;
 let pageContainers: HTMLElement[] = [];
@@ -61,8 +62,15 @@ export function goToPage(pageNum: number) {
         scrollContainer.scrollTop = container.offsetTop;
         scrollContainer.style.removeProperty('scroll-behavior');
     };
+    if (pageSizes.has(page)) {
+        apply();
+        return;
+    }
     apply();
-    void measurePageNow(page).then(apply);
+    void Promise.all([measurePageNow(page), whenMeasurementDone()]).then(() => {
+        if (!PdfState.currentPdfDoc || Math.abs(currentPageAtViewport() - page) > 3) return;
+        apply();
+    });
 }
 
 function syncPageCounter() {
@@ -80,14 +88,17 @@ let activeThumbPage = 0;
 function syncActiveThumb() {
     if (!scrollContainer || !DOM.sidebarPreviews || !PdfState.currentPdfDoc) return;
     const page = currentPageAtViewport();
-    if (page === activeThumbPage) return;
+    const changed = page !== activeThumbPage;
     activeThumbPage = page;
     const prev = DOM.sidebarPreviews.querySelector<HTMLElement>('.thumb-active');
+    const prevPage = prev ? parseInt(prev.dataset.pageNum || '0', 10) : 0;
+    if (prev && prevPage === page) return;
     if (prev) prev.classList.remove('thumb-active');
+    if (!previewsPaneVisible()) return;
     const thumb = ensureThumbMounted(page);
     if (thumb) {
         thumb.classList.add('thumb-active');
-        scrollThumbIntoView(thumb);
+        if (changed) scrollThumbIntoView(thumb);
     }
 }
 
@@ -100,18 +111,45 @@ function previewsPaneVisible(): boolean {
     );
 }
 
+let thumbFollowSmooth = false;
+let thumbFollowTimer: any = null;
+
+function paneOffsetInSidebar(): number {
+    const sidebar = document.getElementById('sidebar');
+    const pane = DOM.sidebarPreviews;
+    if (!sidebar || !pane) return 0;
+    return pane.getBoundingClientRect().top - sidebar.getBoundingClientRect().top + sidebar.scrollTop;
+}
+
 function scrollThumbIntoView(thumb: HTMLElement) {
     const sidebar = document.getElementById('sidebar');
     if (!sidebar || !previewsPaneVisible()) return;
-    const viewTop = sidebar.scrollTop;
+    const paneTop = paneOffsetInSidebar();
+    const viewTop = sidebar.scrollTop - paneTop;
     const viewBottom = viewTop + sidebar.clientHeight;
     const thumbTop = thumb.offsetTop;
     const thumbBottom = thumbTop + thumb.offsetHeight;
-    if (thumbTop < viewTop || thumbBottom > viewBottom) {
-        sidebar.scrollTo({
-            top: Math.max(0, thumbTop - (sidebar.clientHeight - thumb.offsetHeight) / 2),
-            behavior: 'smooth',
-        });
+    if (thumbTop >= viewTop && thumbBottom <= viewBottom) {
+        thumbFollowSmooth = false;
+        return;
+    }
+    const target = Math.max(0, thumbTop - (sidebar.clientHeight - thumb.offsetHeight) / 2 + paneTop);
+    const dist = Math.abs(sidebar.scrollTop - target);
+    if (dist <= sidebar.clientHeight && !thumbFollowSmooth) {
+        thumbFollowSmooth = true;
+        sidebar.scrollTo({ top: target, behavior: 'smooth' });
+        if (thumbFollowTimer) clearTimeout(thumbFollowTimer);
+        thumbFollowTimer = setTimeout(
+            () => {
+                thumbFollowSmooth = false;
+            },
+            Math.min(900, 250 + dist * 0.5),
+        );
+    } else {
+        sidebar.style.scrollBehavior = 'auto';
+        sidebar.scrollTop = target;
+        sidebar.style.removeProperty('scroll-behavior');
+        thumbFollowSmooth = false;
     }
 }
 
@@ -168,6 +206,8 @@ export function resetPdfState() {
     PdfState.currentPdfDoc = null;
     PdfState.zoomMode = 'auto';
     resetViewer();
+    const sidebar = document.getElementById('sidebar');
+    if (sidebar) sidebar.removeEventListener('scroll', onThumbScroll);
 }
 
 function resetViewer() {
@@ -358,11 +398,21 @@ async function measureAllPages(version: number) {
         }
     } finally {
         measuring = false;
+        const resolvers = measureWaiters;
+        measureWaiters = [];
+        for (const resolve of resolvers) resolve();
         if (version === viewerVersion) {
             scheduleMainWindowRender();
             scheduleThumbWindowRender();
         }
     }
+}
+
+let measureWaiters: (() => void)[] = [];
+
+function whenMeasurementDone(): Promise<void> {
+    if (!measuring) return Promise.resolve();
+    return new Promise((resolve) => measureWaiters.push(resolve));
 }
 
 export async function measurePageNow(pageNum: number) {
@@ -385,7 +435,10 @@ export function refreshSidebarSync() {
     if (!PdfState.currentPdfDoc) return;
     syncActiveThumb();
     syncActiveOutline();
-    if (previewsPaneVisible()) scheduleThumbWindowRender();
+    if (!previewsPaneVisible()) return;
+    scheduleThumbWindowRender();
+    const active = DOM.sidebarPreviews.querySelector<HTMLElement>('.thumb-active');
+    if (active) scrollThumbIntoView(active);
 }
 
 function queuePageRender(pageNum: number) {
@@ -492,10 +545,25 @@ async function addPageLinkLayer(page: any, container: HTMLElement, viewport: any
 function jumpToPage(pageNum: number) {
     const jump = () => {
         const target = document.getElementById(`page-container-${pageNum}`);
-        if (target) target.scrollIntoView({ behavior: 'smooth' });
+        if (!target || !scrollContainer) return;
+        const dist = Math.abs(target.offsetTop - scrollContainer.scrollTop);
+        if (dist > (scrollContainer.clientHeight || 1) * 1.5) {
+            scrollContainer.style.scrollBehavior = 'auto';
+            scrollContainer.scrollTop = target.offsetTop;
+            scrollContainer.style.removeProperty('scroll-behavior');
+        } else {
+            target.scrollIntoView({ behavior: 'smooth' });
+        }
     };
+    if (pageSizes.has(pageNum)) {
+        jump();
+        return;
+    }
     jump();
-    void measurePageNow(pageNum).then(jump);
+    void Promise.all([measurePageNow(pageNum), whenMeasurementDone()]).then(() => {
+        if (!PdfState.currentPdfDoc || Math.abs(currentPageAtViewport() - pageNum) > 3) return;
+        jump();
+    });
 }
 
 async function resolveOutlineDest(dest: any): Promise<number | null> {
@@ -658,20 +726,20 @@ function evictOutside(first: number, last: number) {
 function thumbHeightFor(pageNum: number): number {
     const size = pageSizes.get(pageNum);
     const aspect = thumbAspects.get(pageNum) ?? (size ? size.height / size.width : 792 / 612);
-    return Math.round(Math.max(160, getSidebarTargetWidth() - 32) * aspect);
+    return Math.round(Math.max(120, getSidebarTargetWidth() - THUMB_INSET * 2) * aspect);
 }
 
 function rebuildThumbLayout() {
     if (!PdfState.currentPdfDoc || !DOM.sidebarPreviews) return;
     const total = PdfState.currentPdfDoc.numPages;
     const tops = new Array<number>(total);
-    let y = 0;
+    let y = THUMB_INSET;
     for (let i = 0; i < total; i++) {
         tops[i] = y;
         y += thumbHeightFor(i + 1) + THUMB_GAP;
     }
     thumbTops = tops;
-    DOM.sidebarPreviews.style.height = `${y + 16}px`;
+    DOM.sidebarPreviews.style.height = `${y + THUMB_INSET - THUMB_GAP}px`;
     for (const canvas of thumbElements) {
         const pageNum = parseInt(canvas.dataset.pageNum || '0', 10);
         canvas.style.top = `${tops[pageNum - 1] ?? 0}px`;
@@ -690,17 +758,12 @@ function ensureThumbMounted(pageNum: number): HTMLCanvasElement | null {
         'cursor-pointer border-2 border-transparent hover:border-lavender-400 transition-colors shadow-sm rounded bg-white';
     canvas.dataset.pageNum = String(pageNum);
     canvas.style.position = 'absolute';
-    canvas.style.left = '0';
-    canvas.style.width = '100%';
+    canvas.style.left = `${THUMB_INSET}px`;
+    canvas.style.width = `calc(100% - ${THUMB_INSET * 2}px)`;
     canvas.style.top = `${thumbTops[pageNum - 1]}px`;
     canvas.style.height = `${thumbHeightFor(pageNum)}px`;
     canvas.onclick = () => {
-        const jump = () => {
-            const target = document.getElementById(`page-container-${pageNum}`);
-            if (target) target.scrollIntoView({ behavior: 'smooth' });
-        };
-        jump();
-        void measurePageNow(pageNum).then(jump);
+        jumpToPage(pageNum);
     };
     DOM.sidebarPreviews.appendChild(canvas);
     thumbElements.push(canvas);
@@ -735,6 +798,7 @@ export async function renderThumbnails() {
 
     if (sidebar) {
         sidebar.scrollTop = savedScrollTop;
+        sidebar.removeEventListener('scroll', onThumbScroll);
         sidebar.addEventListener('scroll', onThumbScroll, { passive: true });
         scheduleThumbWindowRender();
     } else {
@@ -788,8 +852,9 @@ function renderVisibleThumbs() {
     rebuildThumbLayout();
     const total = PdfState.currentPdfDoc.numPages;
     if (total === 0) return;
-    const first = Math.max(0, thumbIndexAt(sidebar.scrollTop) - 2);
-    const last = Math.min(total - 1, thumbIndexAt(sidebar.scrollTop + sidebar.clientHeight) + 5);
+    const paneScroll = Math.max(0, sidebar.scrollTop - paneOffsetInSidebar());
+    const first = Math.max(0, thumbIndexAt(paneScroll) - 2);
+    const last = Math.min(total - 1, thumbIndexAt(paneScroll + sidebar.clientHeight) + 5);
 
     for (let i = first; i <= last; i++) ensureThumbMounted(i + 1);
     evictThumbs(first, last);
@@ -800,6 +865,7 @@ function renderVisibleThumbs() {
     for (let pageNum = first + 1; pageNum <= last + 1; pageNum++) {
         queueThumbRender(pageNum);
     }
+    syncActiveThumb();
 }
 
 function queueThumbRender(pageNum: number) {
@@ -834,7 +900,7 @@ async function renderThumb(pageNum: number) {
         const page = await PdfState.currentPdfDoc.getPage(pageNum);
         if (!thumb.isConnected || !PdfState.currentPdfDoc) return;
         const baseViewport = page.getViewport({ scale: 1 });
-        const targetWidth = Math.max(160, getSidebarTargetWidth() - 32);
+        const targetWidth = Math.max(120, getSidebarTargetWidth() - THUMB_INSET * 2);
         const scale = (targetWidth / baseViewport.width) * getOutputScale();
         const viewport = page.getViewport({ scale });
         thumb.width = Math.max(1, Math.floor(viewport.width));
