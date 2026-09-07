@@ -289,15 +289,21 @@ export async function renderAllMainPages() {
 
 async function runRenderAllMainPages() {
     const restore = savedScrollPos;
-    resetViewer();
-    const version = viewerVersion;
+    const version = viewerVersion + 1;
+    viewerVersion = version;
+    cancelPendingRenders();
+    renderedCanvases.clear();
+    pageSizes.clear();
+    pageContainers = [];
+    if (scrollSettleTimer) {
+        clearTimeout(scrollSettleTimer);
+        scrollSettleTimer = null;
+    }
 
-    scrollContainer = document.createElement('div');
-    scrollContainer.id = 'pdf-scroll-container';
-    scrollContainer.className =
-        'w-full h-full overflow-y-auto flex flex-col items-center py-8 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] scrollbar-none scroll-smooth';
-    DOM.mainContentNode.innerHTML = '';
-    DOM.mainContentNode.appendChild(scrollContainer);
+    const scroller = document.createElement('div');
+    scroller.id = 'pdf-scroll-container';
+    scroller.className =
+        'w-full h-full overflow-y-auto flex flex-col items-center py-8 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] scrollbar-none';
 
     const total = PdfState.currentPdfDoc.numPages;
 
@@ -338,16 +344,28 @@ async function runRenderAllMainPages() {
         container.style.height = `${placeholder.height}px`;
         fragment.appendChild(container);
     }
-    scrollContainer.appendChild(fragment);
-    pageContainers = Array.from(scrollContainer.children) as HTMLElement[];
+    scroller.appendChild(fragment);
 
-    scrollContainer.addEventListener('scroll', onMainScroll, { passive: true });
+    const old = scrollContainer;
+    scrollContainer = scroller;
+    pageContainers = Array.from(scroller.children) as HTMLElement[];
+    if (old) {
+        old.removeEventListener('scroll', onMainScroll);
+        old.remove();
+    }
+    DOM.mainContentNode.innerHTML = '';
+    DOM.mainContentNode.appendChild(scroller);
 
-    measureAllPages(version);
+    scroller.addEventListener('scroll', onMainScroll, { passive: true });
+
     restoreScrollPos(restore);
     scheduleMainWindowRender();
-
     updateScrollModeClasses(PdfState.isSnapMode);
+
+    await measureAllPages(version);
+    if (version !== viewerVersion) return;
+    restoreScrollPos(restore ?? savedScrollPos);
+    scheduleMainWindowRender();
 }
 
 function onMainScroll() {
@@ -392,44 +410,51 @@ function scheduleMainWindowRender() {
     });
 }
 
-async function measureAllPages(version: number) {
-    if (!PdfState.currentPdfDoc || measuring) return;
-    measuring = true;
-    try {
-        const total = PdfState.currentPdfDoc.numPages;
-        for (let start = 1; start <= total; start += MEASURE_CHUNK) {
-            if (version !== viewerVersion) return;
-            const end = Math.min(start + MEASURE_CHUNK, total + 1);
-            const pages = await Promise.all(
-                Array.from({ length: end - start }, (_, i) =>
-                    PdfState.currentPdfDoc.getPage(start + i).catch(() => null),
-                ),
-            );
-            for (let i = 0; i < pages.length; i++) {
+let measureChain: Promise<void> = Promise.resolve();
+
+function measureAllPages(version: number): Promise<void> {
+    const run = async () => {
+        if (!PdfState.currentPdfDoc) return;
+        measuring = true;
+        try {
+            const total = PdfState.currentPdfDoc.numPages;
+            const pending: { pageNum: number; size: { width: number; height: number } }[] = [];
+            for (let start = 1; start <= total; start += MEASURE_CHUNK) {
                 if (version !== viewerVersion) return;
-                const page = pages[i];
-                const pageNum = start + i;
-                if (!page || pageSizes.has(pageNum)) continue;
-                const viewport = page.getViewport({ scale: PdfState.currentScale });
-                pageSizes.set(pageNum, { width: viewport.width, height: viewport.height });
-                const container = pageContainers[pageNum - 1];
-                if (container) {
-                    container.style.width = `${viewport.width}px`;
-                    container.style.height = `${viewport.height}px`;
+                const end = Math.min(start + MEASURE_CHUNK, total + 1);
+                const pages = await Promise.all(
+                    Array.from({ length: end - start }, (_, i) =>
+                        PdfState.currentPdfDoc.getPage(start + i).catch(() => null),
+                    ),
+                );
+                for (let i = 0; i < pages.length; i++) {
+                    if (version !== viewerVersion) return;
+                    const page = pages[i];
+                    const pageNum = start + i;
+                    if (!page || pageSizes.has(pageNum)) continue;
+                    const viewport = page.getViewport({ scale: PdfState.currentScale });
+                    pending.push({ pageNum, size: { width: viewport.width, height: viewport.height } });
                 }
             }
-            await new Promise((resolve) => setTimeout(resolve, 0));
-        }
-    } finally {
-        measuring = false;
-        const resolvers = measureWaiters;
-        measureWaiters = [];
-        for (const resolve of resolvers) resolve();
-        if (version === viewerVersion) {
-            scheduleMainWindowRender();
+            if (version !== viewerVersion) return;
+            for (const { pageNum, size } of pending) {
+                pageSizes.set(pageNum, size);
+                const container = pageContainers[pageNum - 1];
+                if (container) {
+                    container.style.width = `${size.width}px`;
+                    container.style.height = `${size.height}px`;
+                }
+            }
             scheduleThumbWindowRender();
+        } finally {
+            measuring = false;
+            const resolvers = measureWaiters;
+            measureWaiters = [];
+            for (const resolve of resolvers) resolve();
         }
-    }
+    };
+    measureChain = measureChain.then(run, run);
+    return measureChain;
 }
 
 let measureWaiters: (() => void)[] = [];
@@ -499,7 +524,7 @@ async function renderPage(pageNum: number) {
         const page = await PdfState.currentPdfDoc.getPage(pageNum);
         if (!container.isConnected || !PdfState.currentPdfDoc) return;
         const viewport = page.getViewport({ scale: PdfState.currentScale });
-        if (!pageSizes.has(pageNum)) {
+        if (!pageSizes.has(pageNum) && !measuring) {
             pageSizes.set(pageNum, { width: viewport.width, height: viewport.height });
             container.style.width = `${viewport.width}px`;
             container.style.height = `${viewport.height}px`;
@@ -790,7 +815,10 @@ function restoreSidebarAnchor(anchor: { page: number; frac: number } | null): nu
     if (!anchor || !sidebar) return 0;
     const paneTop = paneOffsetInSidebar();
     const target =
-        thumbTops[anchor.page - 1] + anchor.frac * (thumbHeightFor(anchor.page) + THUMB_GAP) - sidebar.clientHeight / 2 + paneTop;
+        thumbTops[anchor.page - 1] +
+        anchor.frac * (thumbHeightFor(anchor.page) + THUMB_GAP) -
+        sidebar.clientHeight / 2 +
+        paneTop;
     const max = Math.max(0, sidebar.scrollHeight - sidebar.clientHeight);
     return Math.max(0, Math.min(max, target));
 }
@@ -855,7 +883,7 @@ export async function renderThumbnails() {
     }
 
     activeThumbPage = 0;
-    thumbFollowSmooth = true; 
+    thumbFollowSmooth = true;
     syncActiveThumb();
     thumbFollowSmooth = false;
 }

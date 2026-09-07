@@ -159,6 +159,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 150);
     });
 
+    const dprQuery = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+    dprQuery.addEventListener('change', () => {
+        if (!PdfState.currentPdfDoc) return;
+        void renderAllMainPages().then(() => renderThumbnails());
+    });
+
     let sidebarDragTimer: any = null;
     window.addEventListener('qv:sidebar-resized', () => {
         if (!PdfState.currentPdfDoc) return;
