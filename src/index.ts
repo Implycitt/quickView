@@ -13,6 +13,7 @@ import {
     renderThumbnails,
     goToPage,
     refreshSidebarSync,
+    whenMainRenderIdle,
     PdfState,
 } from './rendering/pdfRenderer.js';
 import { renderFileContent } from './rendering/fileHandler.js';
@@ -151,8 +152,9 @@ document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('resize', () => {
         if (!PdfState.currentPdfDoc) return;
         if (resizeTimer) clearTimeout(resizeTimer);
-        resizeTimer = setTimeout(() => {
-            renderAllMainPages();
+        resizeTimer = setTimeout(async () => {
+            resizeTimer = null;
+            await renderAllMainPages();
             renderThumbnails();
         }, 150);
     });
@@ -163,7 +165,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (sidebarDragTimer) clearTimeout(sidebarDragTimer);
         sidebarDragTimer = setTimeout(() => {
             sidebarDragTimer = null;
-            void renderThumbnails();
+            void whenMainRenderIdle().then(() => renderThumbnails());
         }, 150);
     });
 });

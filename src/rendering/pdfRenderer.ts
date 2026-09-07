@@ -41,9 +41,10 @@ let thumbAspects = new Map<number, number>();
 let measuring = false;
 let viewerVersion = 0;
 let savedScrollPos: { page: number; fraction: number } | null = null;
+let lastKnownPage = 1;
 
 function captureScrollPos(): { page: number; fraction: number } | null {
-    if (!scrollContainer || pageContainers.length === 0) return null;
+    if (!scrollContainer || pageContainers.length === 0) return savedScrollPos;
     const scrollTop = scrollContainer.scrollTop;
     const page = currentPageAtViewport();
     const container = pageContainers[page - 1];
@@ -158,8 +159,15 @@ function restoreScrollPos(pos: { page: number; fraction: number } | null) {
     const page = Math.min(pageContainers.length, Math.max(1, pos.page));
     const container = pageContainers[page - 1];
     if (!container) return;
+    let target: number;
+    if (PdfState.isSnapMode) {
+        target = container.offsetTop + (container.offsetHeight - scrollContainer.clientHeight) / 2;
+        target = Math.max(0, target);
+    } else {
+        target = container.offsetTop + pos.fraction * container.offsetHeight;
+    }
     scrollContainer.style.scrollBehavior = 'auto';
-    scrollContainer.scrollTop = container.offsetTop + pos.fraction * container.offsetHeight;
+    scrollContainer.scrollTop = target;
     scrollContainer.style.removeProperty('scroll-behavior');
 }
 
@@ -203,6 +211,7 @@ export function resetPdfState() {
     thumbTops = [];
     thumbAspects.clear();
     savedScrollPos = null;
+    lastKnownPage = 1;
     PdfState.currentPdfDoc = null;
     PdfState.zoomMode = 'auto';
     resetViewer();
@@ -241,7 +250,7 @@ function pageAtOffset(y: number): number {
 }
 
 function currentPageAtViewport(): number {
-    if (pageContainers.length === 0 || !scrollContainer) return 1;
+    if (pageContainers.length === 0 || !scrollContainer) return lastKnownPage;
     const top = scrollContainer.scrollTop;
     const bottom = top + (scrollContainer.clientHeight || 1);
     const mid = (top + bottom) / 2;
@@ -259,12 +268,26 @@ function currentPageAtViewport(): number {
             best = p;
         }
     }
+    lastKnownPage = best;
     return best;
+}
+
+let mainRenderInFlight: Promise<void> | null = null;
+
+export function whenMainRenderIdle(): Promise<void> {
+    return mainRenderInFlight ?? Promise.resolve();
 }
 
 export async function renderAllMainPages() {
     if (!PdfState.currentPdfDoc || !DOM.mainContentNode) return;
+    const run = runRenderAllMainPages();
+    mainRenderInFlight = run.finally(() => {
+        if (mainRenderInFlight === run) mainRenderInFlight = null;
+    });
+    return mainRenderInFlight;
+}
 
+async function runRenderAllMainPages() {
     const restore = savedScrollPos;
     resetViewer();
     const version = viewerVersion;
@@ -298,7 +321,8 @@ export async function renderAllMainPages() {
         DOM.zoomLevelSpan.value = `${Math.round(PdfState.currentScale * 100)}%`;
     }
     if (DOM.pageCounter) {
-        DOM.pageCounter.value = '1';
+        DOM.pageCounter.value = String(lastKnownPage);
+        DOM.pageCounter.dataset.current = String(lastKnownPage);
     }
     if (DOM.pageTotal) {
         DOM.pageTotal.textContent = `/ ${total}`;
@@ -723,20 +747,23 @@ function evictOutside(first: number, last: number) {
     }
 }
 
-function thumbHeightFor(pageNum: number): number {
+function thumbHeightFor(pageNum: number, width = getSidebarTargetWidth()): number {
     const size = pageSizes.get(pageNum);
     const aspect = thumbAspects.get(pageNum) ?? (size ? size.height / size.width : 792 / 612);
-    return Math.round(Math.max(120, getSidebarTargetWidth() - THUMB_INSET * 2) * aspect);
+    return Math.round(Math.max(120, width - THUMB_INSET * 2) * aspect);
 }
+
+let thumbLayoutWidth = 280;
 
 function rebuildThumbLayout() {
     if (!PdfState.currentPdfDoc || !DOM.sidebarPreviews) return;
     const total = PdfState.currentPdfDoc.numPages;
+    thumbLayoutWidth = getSidebarTargetWidth();
     const tops = new Array<number>(total);
     let y = THUMB_INSET;
     for (let i = 0; i < total; i++) {
         tops[i] = y;
-        y += thumbHeightFor(i + 1) + THUMB_GAP;
+        y += thumbHeightFor(i + 1, thumbLayoutWidth) + THUMB_GAP;
     }
     thumbTops = tops;
     DOM.sidebarPreviews.style.height = `${y + THUMB_INSET - THUMB_GAP}px`;
@@ -744,6 +771,28 @@ function rebuildThumbLayout() {
         const pageNum = parseInt(canvas.dataset.pageNum || '0', 10);
         canvas.style.top = `${tops[pageNum - 1] ?? 0}px`;
     }
+}
+
+function captureSidebarAnchor(): { page: number; frac: number } | null {
+    const sidebar = document.getElementById('sidebar');
+    if (!sidebar || thumbTops.length === 0) return null;
+    const paneTop = paneOffsetInSidebar();
+    const center = sidebar.scrollTop + sidebar.clientHeight / 2 - paneTop;
+    const idx = thumbIndexAt(Math.max(0, center));
+    const top = thumbTops[idx];
+    const height = thumbHeightFor(idx + 1, thumbLayoutWidth) + THUMB_GAP;
+    const frac = height > 0 ? Math.max(0, Math.min(1, (center - top) / height)) : 0;
+    return { page: idx + 1, frac };
+}
+
+function restoreSidebarAnchor(anchor: { page: number; frac: number } | null): number {
+    const sidebar = document.getElementById('sidebar');
+    if (!anchor || !sidebar) return 0;
+    const paneTop = paneOffsetInSidebar();
+    const target =
+        thumbTops[anchor.page - 1] + anchor.frac * (thumbHeightFor(anchor.page) + THUMB_GAP) - sidebar.clientHeight / 2 + paneTop;
+    const max = Math.max(0, sidebar.scrollHeight - sidebar.clientHeight);
+    return Math.max(0, Math.min(max, target));
 }
 
 function ensureThumbMounted(pageNum: number): HTMLCanvasElement | null {
@@ -778,7 +827,7 @@ export async function renderThumbnails() {
     thumbElements = [];
 
     const sidebar = document.getElementById('sidebar');
-    const savedScrollTop = sidebar ? sidebar.scrollTop : 0;
+    const savedAnchor = captureSidebarAnchor();
     DOM.sidebarPreviews.innerHTML = '';
     DOM.sidebarPreviews.style.position = 'relative';
 
@@ -793,11 +842,8 @@ export async function renderThumbnails() {
     const total = PdfState.currentPdfDoc.numPages;
     rebuildThumbLayout();
 
-    activeThumbPage = 0;
-    syncActiveThumb();
-
     if (sidebar) {
-        sidebar.scrollTop = savedScrollTop;
+        sidebar.scrollTop = restoreSidebarAnchor(savedAnchor);
         sidebar.removeEventListener('scroll', onThumbScroll);
         sidebar.addEventListener('scroll', onThumbScroll, { passive: true });
         scheduleThumbWindowRender();
@@ -807,6 +853,11 @@ export async function renderThumbnails() {
             queueThumbRender(i);
         }
     }
+
+    activeThumbPage = 0;
+    thumbFollowSmooth = true; 
+    syncActiveThumb();
+    thumbFollowSmooth = false;
 }
 
 function thumbIndexAt(y: number): number {
