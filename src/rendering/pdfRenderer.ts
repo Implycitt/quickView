@@ -42,6 +42,7 @@ let measuring = false;
 let viewerVersion = 0;
 let savedScrollPos: { page: number; fraction: number } | null = null;
 let lastKnownPage = 1;
+let currentFileName: string | null = null;
 
 function captureScrollPos(): { page: number; fraction: number } | null {
     if (!scrollContainer || pageContainers.length === 0) return savedScrollPos;
@@ -160,7 +161,7 @@ function restoreScrollPos(pos: { page: number; fraction: number } | null) {
     const container = pageContainers[page - 1];
     if (!container) return;
     let target: number;
-    if (PdfState.isSnapMode) {
+    if (PdfState.isSnapMode && !snapSuspended) {
         target = container.offsetTop + (container.offsetHeight - scrollContainer.clientHeight) / 2;
         target = Math.max(0, target);
     } else {
@@ -212,6 +213,8 @@ export function resetPdfState() {
     thumbAspects.clear();
     savedScrollPos = null;
     lastKnownPage = 1;
+    currentFileName = null;
+    syncOutlineBreadcrumb();
     PdfState.currentPdfDoc = null;
     PdfState.zoomMode = 'auto';
     resetViewer();
@@ -361,6 +364,9 @@ async function runRenderAllMainPages() {
     restoreScrollPos(restore);
     scheduleMainWindowRender();
     updateScrollModeClasses(PdfState.isSnapMode);
+    if (snapSuspended) {
+        scroller.classList.remove('snap-y', 'snap-mandatory');
+    }
 
     await measureAllPages(version);
     if (version !== viewerVersion) return;
@@ -388,6 +394,7 @@ function renderVisibleWindow() {
     syncPageCounter();
     syncActiveThumb();
     syncActiveOutline();
+    syncOutlineBreadcrumb();
     const scrollTop = scrollContainer.scrollTop;
     const clientHeight = scrollContainer.clientHeight || 1;
     const first = Math.max(1, pageAtOffset(scrollTop) - RENDER_BEHIND_PAGES);
@@ -484,6 +491,7 @@ export function refreshSidebarSync() {
     if (!PdfState.currentPdfDoc) return;
     syncActiveThumb();
     syncActiveOutline();
+    syncOutlineBreadcrumb();
     if (!previewsPaneVisible()) return;
     scheduleThumbWindowRender();
     const active = DOM.sidebarPreviews.querySelector<HTMLElement>('.thumb-active');
@@ -580,8 +588,8 @@ async function addPageLinkLayer(page: any, container: HTMLElement, viewport: any
                 el.href = '#';
                 el.addEventListener('click', (e) => {
                     e.preventDefault();
-                    void resolveOutlineDest(ann.dest).then((p) => {
-                        if (p) jumpToPage(p);
+                    void resolveOutlineDest(ann.dest).then((t) => {
+                        if (t) jumpToPage(t.page, t.y);
                     });
                 });
             }
@@ -591,17 +599,38 @@ async function addPageLinkLayer(page: any, container: HTMLElement, viewport: any
     } catch {}
 }
 
-function jumpToPage(pageNum: number) {
+let snapSuspended = false;
+
+function suspendSnap() {
+    if (!PdfState.isSnapMode || snapSuspended || !scrollContainer) return;
+    if (!scrollContainer.classList.contains('snap-mandatory')) return;
+    snapSuspended = true;
+    scrollContainer.classList.remove('snap-y', 'snap-mandatory');
+    const resume = () => {
+        snapSuspended = false;
+        window.removeEventListener('wheel', resume, { capture: true });
+        window.removeEventListener('keydown', resume, { capture: true });
+        if (!scrollContainer || !PdfState.isSnapMode) return;
+        scrollContainer.classList.add('snap-y', 'snap-mandatory');
+    };
+    window.addEventListener('wheel', resume, { capture: true, passive: true });
+    window.addEventListener('keydown', resume, { capture: true });
+}
+
+function jumpToPage(pageNum: number, yCss: number | null = null) {
     const jump = () => {
         const target = document.getElementById(`page-container-${pageNum}`);
         if (!target || !scrollContainer) return;
-        const dist = Math.abs(target.offsetTop - scrollContainer.scrollTop);
+        const y = yCss == null ? 0 : Math.max(0, Math.min(yCss, target.offsetHeight - 1));
+        const top = target.offsetTop + y;
+        if (y > 0) suspendSnap();
+        const dist = Math.abs(top - scrollContainer.scrollTop);
         if (dist > (scrollContainer.clientHeight || 1) * 1.5) {
             scrollContainer.style.scrollBehavior = 'auto';
-            scrollContainer.scrollTop = target.offsetTop;
+            scrollContainer.scrollTop = top;
             scrollContainer.style.removeProperty('scroll-behavior');
         } else {
-            target.scrollIntoView({ behavior: 'smooth' });
+            scrollContainer.scrollTo({ top, behavior: 'smooth' });
         }
     };
     if (pageSizes.has(pageNum)) {
@@ -615,7 +644,7 @@ function jumpToPage(pageNum: number) {
     });
 }
 
-async function resolveOutlineDest(dest: any): Promise<number | null> {
+async function resolveOutlineDest(dest: any): Promise<{ page: number; y: number | null } | null> {
     try {
         if (!dest) return null;
         if (typeof dest === 'string') {
@@ -626,48 +655,186 @@ async function resolveOutlineDest(dest: any): Promise<number | null> {
             const ref = dest[0];
             if (ref && typeof ref === 'object' && 'num' in ref) {
                 const pageIndex = await PdfState.currentPdfDoc.getPageIndex(ref);
-                return Math.min(PdfState.currentPdfDoc.numPages, Math.max(1, pageIndex + 1));
+                return withOutlinePosition(pageIndex + 1, dest);
             }
             if (typeof ref === 'number') {
-                return Math.min(PdfState.currentPdfDoc.numPages, Math.max(1, Math.round(ref)));
+                return withOutlinePosition(Math.round(ref), dest);
             }
         }
     } catch {}
     return null;
 }
 
+async function withOutlinePosition(pageNum: number, dest: any[]): Promise<{ page: number; y: number | null } | null> {
+    const doc = PdfState.currentPdfDoc;
+    if (!doc) return null;
+    const page = Math.min(doc.numPages, Math.max(1, pageNum));
+    const mode = dest[1]?.name ?? dest[1];
+    let top: number | null = null;
+    if (mode === 'XYZ' && typeof dest[3] === 'number') top = dest[3];
+    else if ((mode === 'FitH' || mode === 'FitBH') && typeof dest[2] === 'number') top = dest[2];
+    if (top === null) return { page, y: null };
+    let pageHeightPts: number;
+    const cached = pageSizes.get(page);
+    if (cached) {
+        pageHeightPts = cached.height / PdfState.currentScale;
+    } else {
+        const p = await doc.getPage(page);
+        pageHeightPts = p.view[3] - p.view[1];
+    }
+    const yPts = pageHeightPts - top;
+    if (yPts <= 1) return { page, y: null };
+    return { page, y: yPts * PdfState.currentScale };
+}
+
 const outlineDests = new Map<HTMLElement, any>();
+const outlinePositions = new Map<HTMLElement, { page: number; y: number }>();
+const outlineParentRow = new Map<HTMLElement, HTMLElement | null>();
 let activeOutlineRow: HTMLElement | null = null;
+let outlineFollowSmooth = false;
+let outlineFollowTimer: any = null;
+
+function currentViewPosition(): { page: number; y: number } {
+    const page = currentPageAtViewport();
+    const container = pageContainers[page - 1];
+    if (!scrollContainer || !container) return { page, y: 0 };
+    const mid = scrollContainer.scrollTop + (scrollContainer.clientHeight || 1) / 2;
+    return { page, y: Math.max(0, mid - container.offsetTop) };
+}
+
+function bestOutlineRow(rows: HTMLElement[]): HTMLElement | null {
+    const pos = currentViewPosition();
+    let best: HTMLElement | null = null;
+    let bestPage = 0;
+    let bestY = -Infinity;
+    for (const row of rows) {
+        const p = outlinePositions.get(row);
+        if (!p) continue;
+        if (p.page > pos.page || (p.page === pos.page && p.y > pos.y)) continue;
+        if (p.page > bestPage || (p.page === bestPage && p.y >= bestY)) {
+            bestPage = p.page;
+            bestY = p.y;
+            best = row;
+        }
+    }
+    return best;
+}
+
+function sectionsPaneVisible(): boolean {
+    return (
+        !!DOM.sidebarSections &&
+        !DOM.sidebarSections.classList.contains('hidden') &&
+        !!DOM.sidebar &&
+        DOM.sidebar.style.width !== '0px'
+    );
+}
+
+function sectionsPaneOffsetInSidebar(): number {
+    const sidebar = document.getElementById('sidebar');
+    const pane = DOM.sidebarSections;
+    if (!sidebar || !pane) return 0;
+    return pane.getBoundingClientRect().top - sidebar.getBoundingClientRect().top + sidebar.scrollTop;
+}
+
+function scrollOutlineRowIntoView(row: HTMLElement) {
+    const sidebar = document.getElementById('sidebar');
+    if (!sidebar || !sectionsPaneVisible()) return;
+    const paneTop = sectionsPaneOffsetInSidebar();
+    const viewTop = sidebar.scrollTop - paneTop;
+    const viewBottom = viewTop + sidebar.clientHeight;
+    const rowTop = row.getBoundingClientRect().top - DOM.sidebarSections.getBoundingClientRect().top;
+    const rowBottom = rowTop + row.offsetHeight;
+    if (rowTop >= viewTop && rowBottom <= viewBottom) {
+        outlineFollowSmooth = false;
+        return;
+    }
+    const target = Math.max(0, rowTop - (sidebar.clientHeight - row.offsetHeight) / 2 + paneTop);
+    const dist = Math.abs(sidebar.scrollTop - target);
+    if (dist <= sidebar.clientHeight && !outlineFollowSmooth) {
+        outlineFollowSmooth = true;
+        sidebar.scrollTo({ top: target, behavior: 'smooth' });
+        if (outlineFollowTimer) clearTimeout(outlineFollowTimer);
+        outlineFollowTimer = setTimeout(
+            () => {
+                outlineFollowSmooth = false;
+            },
+            Math.min(900, 250 + dist * 0.5),
+        );
+    } else {
+        sidebar.style.scrollBehavior = 'auto';
+        sidebar.scrollTop = target;
+        sidebar.style.removeProperty('scroll-behavior');
+        outlineFollowSmooth = false;
+    }
+}
 
 function syncActiveOutline() {
     if (!scrollContainer || !DOM.sidebarSections) return;
     if (DOM.sidebarSections.classList.contains('hidden')) return;
-    const rows = Array.from(DOM.sidebarSections.querySelectorAll<HTMLElement>('.outline-item[data-page]'));
+    const rows = Array.from(DOM.sidebarSections.querySelectorAll<HTMLElement>('.outline-item'));
     if (rows.length === 0) return;
-    const current = currentPageAtViewport();
-    let best: HTMLElement | null = null;
-    let bestPage = 0;
-    for (const row of rows) {
-        const p = parseInt(row.dataset.page || '0', 10);
-        if (p <= current && p >= bestPage) {
-            bestPage = p;
-            best = row;
-        }
-    }
-    if (best === activeOutlineRow) return;
-    if (activeOutlineRow) activeOutlineRow.classList.remove('outline-active');
-    activeOutlineRow = best;
-    if (best) {
-        best.classList.add('outline-active');
-        let node = best.parentElement;
-        while (node && node !== DOM.sidebarSections) {
-            if (node.classList.contains('outline-children') && node.classList.contains('hidden')) {
-                node.classList.remove('hidden');
-                node.previousElementSibling?.classList.remove('outline-collapsed');
+    const best = bestOutlineRow(rows);
+    if (best !== activeOutlineRow) {
+        if (activeOutlineRow) activeOutlineRow.classList.remove('outline-active');
+        activeOutlineRow = best;
+        if (best) {
+            best.classList.add('outline-active');
+            let node = best.parentElement;
+            while (node && node !== DOM.sidebarSections) {
+                if (node.classList.contains('outline-children') && node.classList.contains('hidden')) {
+                    node.classList.remove('hidden');
+                    node.previousElementSibling?.classList.remove('outline-collapsed');
+                }
+                node = node.parentElement;
             }
-            node = node.parentElement;
         }
     }
+    if (best) scrollOutlineRowIntoView(best);
+}
+
+export function setCurrentFileName(name: string | null) {
+    currentFileName = name;
+    syncOutlineBreadcrumb();
+}
+
+export function setBreadcrumbPath(path: string | null) {
+    const el = DOM.breadcrumb;
+    if (!el) return;
+    if (!path) {
+        el.classList.add('hidden');
+        if (el.textContent) {
+            el.textContent = '';
+            el.title = '';
+        }
+        return;
+    }
+    if (el.textContent !== path) {
+        el.textContent = path;
+        el.title = path;
+    }
+    el.classList.remove('hidden');
+}
+
+function syncOutlineBreadcrumb() {
+    if (!currentFileName) {
+        setBreadcrumbPath(null);
+        return;
+    }
+    let path = currentFileName;
+    if (scrollContainer && PdfState.currentPdfDoc) {
+        const rows = Array.from(DOM.sidebarSections.querySelectorAll<HTMLElement>('.outline-item'));
+        const best = bestOutlineRow(rows);
+        if (best) {
+            const parts: string[] = [];
+            let cur: HTMLElement | null = best;
+            while (cur) {
+                parts.unshift(cur.querySelector('.outline-label')?.textContent || '(untitled)');
+                cur = outlineParentRow.get(cur) ?? null;
+            }
+            path = `${currentFileName} ▸ ${parts.join(' ▸ ')}`;
+        }
+    }
+    setBreadcrumbPath(path);
 }
 
 async function linkOutlinePages() {
@@ -676,8 +843,11 @@ async function linkOutlinePages() {
     for (const row of rows) {
         const dest = outlineDests.get(row);
         if (!dest) continue;
-        const page = await resolveOutlineDest(dest);
-        if (page) row.dataset.page = String(page);
+        const target = await resolveOutlineDest(dest);
+        if (target) {
+            row.dataset.page = String(target.page);
+            outlinePositions.set(row, { page: target.page, y: target.y ?? 0 });
+        }
     }
 }
 
@@ -685,6 +855,9 @@ export async function renderOutline() {
     if (!PdfState.currentPdfDoc || !DOM.sidebarSections) return;
     DOM.sidebarSections.innerHTML = '';
     activeOutlineRow = null;
+    outlineDests.clear();
+    outlinePositions.clear();
+    outlineParentRow.clear();
     let outline: any[] | null = null;
     try {
         outline = await PdfState.currentPdfDoc.getOutline();
@@ -696,22 +869,25 @@ export async function renderOutline() {
         empty.className = 'text-gray-500 text-xs italic p-2';
         empty.textContent = 'No sections in this document';
         DOM.sidebarSections.appendChild(empty);
+        syncOutlineBreadcrumb();
         return;
     }
     const fragment = document.createDocumentFragment();
-    for (const item of outline) fragment.appendChild(buildOutlineItem(item, 0));
+    for (const item of outline) fragment.appendChild(buildOutlineItem(item, 0, null));
     DOM.sidebarSections.appendChild(fragment);
     await linkOutlinePages();
     syncActiveOutline();
+    syncOutlineBreadcrumb();
 }
 
-function buildOutlineItem(item: any, depth: number): HTMLElement {
+function buildOutlineItem(item: any, depth: number, parentRow: HTMLElement | null): HTMLElement {
     const node = document.createElement('div');
     node.className = 'outline-node';
 
     const row = document.createElement('div');
     row.className = 'outline-item';
     row.style.paddingLeft = `${depth * 12 + 4}px`;
+    outlineParentRow.set(row, parentRow);
 
     const hasKids = Array.isArray(item.items) && item.items.length > 0;
 
@@ -732,7 +908,7 @@ function buildOutlineItem(item: any, depth: number): HTMLElement {
     if (hasKids) {
         const wrapper = document.createElement('div');
         wrapper.className = 'outline-children';
-        for (const child of item.items) wrapper.appendChild(buildOutlineItem(child, depth + 1));
+        for (const child of item.items) wrapper.appendChild(buildOutlineItem(child, depth + 1, row));
         node.appendChild(wrapper);
         caret.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -744,8 +920,8 @@ function buildOutlineItem(item: any, depth: number): HTMLElement {
     if (item.dest) {
         outlineDests.set(row, item.dest);
         row.addEventListener('click', () => {
-            void resolveOutlineDest(item.dest).then((p) => {
-                if (p) jumpToPage(p);
+            void resolveOutlineDest(item.dest).then((t) => {
+                if (t) jumpToPage(t.page, t.y);
             });
         });
     }
@@ -855,7 +1031,7 @@ export async function renderThumbnails() {
     thumbElements = [];
 
     const sidebar = document.getElementById('sidebar');
-    const savedAnchor = captureSidebarAnchor();
+    const savedAnchor = previewsPaneVisible() ? captureSidebarAnchor() : null;
     DOM.sidebarPreviews.innerHTML = '';
     DOM.sidebarPreviews.style.position = 'relative';
 
@@ -871,7 +1047,7 @@ export async function renderThumbnails() {
     rebuildThumbLayout();
 
     if (sidebar) {
-        sidebar.scrollTop = restoreSidebarAnchor(savedAnchor);
+        if (savedAnchor) sidebar.scrollTop = restoreSidebarAnchor(savedAnchor);
         sidebar.removeEventListener('scroll', onThumbScroll);
         sidebar.addEventListener('scroll', onThumbScroll, { passive: true });
         scheduleThumbWindowRender();

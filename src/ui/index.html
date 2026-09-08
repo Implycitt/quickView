@@ -15,7 +15,7 @@
         class="bg-gray-900 text-gray-100 font-sans h-screen overflow-hidden flex flex-col selection:bg-lavender-500 selection:text-white"
     >
         <header class="bg-gray-800 border-b border-gray-700 px-4 py-3 flex justify-between items-center shadow-md z-10">
-            <div class="flex items-center gap-3">
+            <div class="flex items-center gap-3 min-w-0">
                 <button
                     id="sidebar-toggle"
                     class="p-2 text-gray-400 hover:bg-gray-700 hover:text-lavender-400 rounded-lg transition-colors cursor-pointer"
@@ -53,6 +53,11 @@
                     </svg>
                 </button>
                 <h1 class="text-xl font-bold text-gray-100 tracking-tight">QuickView</h1>
+                <span
+                    id="breadcrumb"
+                    class="hidden inline-block text-xs font-medium text-gray-400 border-l border-gray-700 pl-3 max-w-[360px] truncate"
+                    title=""
+                ></span>
             </div>
 
             <div class="flex items-center">

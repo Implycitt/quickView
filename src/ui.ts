@@ -14,6 +14,7 @@ export const DOM = {} as {
     zoomLevelSpan: HTMLInputElement;
     pageCounter: HTMLInputElement;
     pageTotal: HTMLSpanElement;
+    breadcrumb: HTMLSpanElement;
     pagePrev: HTMLButtonElement;
     pageNext: HTMLButtonElement;
     keybindsToggleBtn: HTMLButtonElement;
@@ -37,6 +38,7 @@ export function initDOM() {
     DOM.zoomLevelSpan = document.getElementById('zoom-level') as HTMLInputElement;
     DOM.pageCounter = document.getElementById('page-counter') as HTMLInputElement;
     DOM.pageTotal = document.getElementById('page-total') as HTMLSpanElement;
+    DOM.breadcrumb = document.getElementById('breadcrumb') as HTMLSpanElement;
     DOM.pagePrev = document.getElementById('page-prev') as HTMLButtonElement;
     DOM.pageNext = document.getElementById('page-next') as HTMLButtonElement;
     DOM.keybindsToggleBtn = document.getElementById('keybinds-toggle') as HTMLButtonElement;
@@ -52,13 +54,14 @@ export function toggleSidebar(forceState?: 'open' | 'closed') {
 
     if (forceState === 'open' || (!forceState && isClosed)) {
         DOM.sidebar.style.width = savedSidebarWidth;
+        window.dispatchEvent(new CustomEvent('qv:sidebar-toggled', { detail: { opened: true } }));
     } else {
         if (!isClosed) {
             savedSidebarWidth = DOM.sidebar.style.width || '280px';
         }
         DOM.sidebar.style.width = '0px';
+        window.dispatchEvent(new CustomEvent('qv:sidebar-toggled', { detail: { opened: false } }));
     }
-    window.dispatchEvent(new Event('qv:sidebar-toggled'));
 }
 
 export function setSidebarTab(tab: 'previews' | 'sections') {

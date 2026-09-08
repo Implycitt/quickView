@@ -45,7 +45,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     window.addEventListener('qv:sidebar-tab-changed', refreshSidebarSync);
-    window.addEventListener('qv:sidebar-toggled', refreshSidebarSync);
+    window.addEventListener('qv:sidebar-toggled', (e) => {
+        if ((e as CustomEvent).detail?.opened) {
+            setTimeout(() => refreshSidebarSync(), 350);
+            return;
+        }
+        refreshSidebarSync();
+    });
 
     if (DOM.toggleScrollModeBtn) {
         DOM.toggleScrollModeBtn.addEventListener('click', () => {
@@ -156,13 +162,17 @@ document.addEventListener('DOMContentLoaded', () => {
             resizeTimer = null;
             await renderAllMainPages();
             renderThumbnails();
+            setTimeout(() => refreshSidebarSync(), 350);
         }, 150);
     });
 
     const dprQuery = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
     dprQuery.addEventListener('change', () => {
         if (!PdfState.currentPdfDoc) return;
-        void renderAllMainPages().then(() => renderThumbnails());
+        void renderAllMainPages().then(() => {
+            renderThumbnails();
+            refreshSidebarSync();
+        });
     });
 
     let sidebarDragTimer: any = null;
@@ -171,7 +181,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (sidebarDragTimer) clearTimeout(sidebarDragTimer);
         sidebarDragTimer = setTimeout(() => {
             sidebarDragTimer = null;
-            void whenMainRenderIdle().then(() => renderThumbnails());
-        }, 150);
+            void whenMainRenderIdle().then(() => {
+                refreshSidebarSync();
+                renderThumbnails();
+            });
+        }, 250);
     });
 });

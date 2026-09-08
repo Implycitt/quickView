@@ -1,6 +1,8 @@
 import MarkdownIt from 'markdown-it';
 import texmath from 'markdown-it-texmath';
 import katex from 'katex';
+import { DOM } from '../ui.js';
+import { setBreadcrumbPath } from './pdfRenderer.js';
 
 export const md = new MarkdownIt({
     html: true,
@@ -102,4 +104,61 @@ export function renderMarkdownWithCallouts(rawMarkdown: string, filePath = ''): 
             `<li><input type="checkbox" disabled${checked.toLowerCase() === 'x' ? ' checked' : ''} class="mr-2 inline-block h-4 w-4 translate-y-0.5 accent-lavender-500" aria-label="${checked.toLowerCase() === 'x' ? 'checked' : 'unchecked'}">`,
     );
     return html;
+}
+
+let mdFileName: string | null = null;
+let mdHeadings: HTMLElement[] = [];
+let mdScrollHandler: (() => void) | null = null;
+
+export function initMdBreadcrumb(fileName: string, scroller: HTMLElement) {
+    mdFileName = fileName;
+    if (mdScrollHandler) {
+        scroller.removeEventListener('scroll', mdScrollHandler);
+        mdScrollHandler = null;
+    }
+    mdHeadings = Array.from(scroller.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6'));
+    syncMdBreadcrumb();
+    mdScrollHandler = syncMdBreadcrumb;
+    scroller.addEventListener('scroll', mdScrollHandler, { passive: true });
+}
+
+function headingLevel(el: HTMLElement): number {
+    return parseInt(el.tagName.charAt(1), 10);
+}
+
+function headingPath(idx: number): string[] {
+    const path: string[] = [];
+    let minLevel = headingLevel(mdHeadings[idx]);
+    for (let i = idx - 1; i >= 0; i--) {
+        const level = headingLevel(mdHeadings[i]);
+        if (level < minLevel) {
+            path.unshift(mdHeadings[i].textContent?.trim() || '(untitled)');
+            minLevel = level;
+        }
+    }
+    path.push(mdHeadings[idx].textContent?.trim() || '(untitled)');
+    return path;
+}
+
+function syncMdBreadcrumb() {
+    if (!mdFileName) {
+        setBreadcrumbPath(null);
+        return;
+    }
+    let path = mdFileName;
+    if (mdHeadings.length > 0 && DOM.mainContentNode) {
+        const scroller = DOM.mainContentNode;
+        const mid = scroller.scrollTop + (scroller.clientHeight || 1) / 2;
+        let bestIdx = -1;
+        for (let i = 0; i < mdHeadings.length; i++) {
+            const top =
+                mdHeadings[i].getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
+            if (top <= mid) bestIdx = i;
+            else break;
+        }
+        if (bestIdx >= 0) {
+            path = `${mdFileName} ▸ ${headingPath(bestIdx).join(' ▸ ')}`;
+        }
+    }
+    setBreadcrumbPath(path);
 }

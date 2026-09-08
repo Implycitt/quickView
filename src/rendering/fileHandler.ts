@@ -1,8 +1,15 @@
 import { DOM, toggleSidebar } from '../ui.js';
 import type { FileResponse } from '../types/types.d.ts';
 
-import { renderMarkdownWithCallouts } from './mdRenderer.js';
-import { PdfState, renderAllMainPages, renderThumbnails, renderOutline, resetPdfState } from './pdfRenderer.js';
+import { renderMarkdownWithCallouts, initMdBreadcrumb } from './mdRenderer.js';
+import {
+    PdfState,
+    renderAllMainPages,
+    renderThumbnails,
+    renderOutline,
+    resetPdfState,
+    setCurrentFileName,
+} from './pdfRenderer.js';
 
 function attachImageFallbacks(root: HTMLElement) {
     root.querySelectorAll('img').forEach((img) => {
@@ -55,15 +62,16 @@ export async function renderFileContent(content: FileResponse) {
         if (DOM.pdfTools) DOM.pdfTools.classList.add('hidden');
 
         const htmlContent = renderMarkdownWithCallouts(content.content || '', content.path || '');
+        setCurrentFileName(content.name);
         toggleSidebar('closed');
         if (DOM.sidebarTabs) DOM.sidebarTabs.classList.add('hidden');
         DOM.sidebarPreviews.innerHTML = '';
         DOM.sidebarSections.innerHTML = '';
 
         DOM.mainContentNode.className =
-            'flex-1 overflow-y-auto flex justify-center bg-gray-900 p-8 transition-colors duration-300';
+            'flex-1 overflow-y-auto flex justify-center bg-gray-900 pt-8 px-8 pb-20 transition-colors duration-300';
         DOM.mainContentNode.innerHTML = `
-            <div class="w-full max-w-4xl mx-auto">
+            <div class="w-full max-w-4xl mx-auto self-start">
                 <div class="bg-gray-800 p-8 md:p-12 rounded-xl shadow-lg border border-gray-700">
                     <article class="prose prose-slate prose-invert prose-a:text-lavender-400 max-w-none">
                         ${htmlContent}
@@ -72,6 +80,7 @@ export async function renderFileContent(content: FileResponse) {
             </div>
         `;
         attachImageFallbacks(DOM.mainContentNode);
+        initMdBreadcrumb(content.name, DOM.mainContentNode);
     } else if (fileName.endsWith('.pdf')) {
         if (DOM.pdfTools) DOM.pdfTools.classList.remove('hidden');
         if (DOM.sidebarTabs) DOM.sidebarTabs.classList.remove('hidden');
@@ -81,6 +90,7 @@ export async function renderFileContent(content: FileResponse) {
             const uint8Array = new Uint8Array(content.data);
             const loadingTask = window.pdfjsLib.getDocument({ data: uint8Array });
             PdfState.currentPdfDoc = await loadingTask.promise;
+            setCurrentFileName(content.name);
 
             PdfState.zoomMode = 'auto';
 
