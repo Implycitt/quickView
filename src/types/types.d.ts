@@ -10,6 +10,7 @@ declare global {
         electronAPI: {
             pickAndReadFile: () => Promise<FileResponse | null>;
             onFileUpdated: (callback: (data: FileResponse) => void) => void;
+            openExternal: (url: string) => Promise<void>;
         };
         pdfjsLib: any;
     }

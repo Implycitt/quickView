@@ -612,6 +612,10 @@ async function addPageLinkLayer(page: any, container: HTMLElement, viewport: any
                 el.href = ann.url;
                 el.target = '_blank';
                 el.rel = 'noopener';
+                el.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    void window.electronAPI.openExternal(ann.url);
+                });
             } else if (ann.dest) {
                 el.href = '#';
                 el.addEventListener('click', (e) => {

@@ -63,6 +63,19 @@ ipcMain.handle('file:pick-and-read', async (event) => {
     return await getFilePayload(filePath);
 });
 
+ipcMain.handle('shell:open-external', async (_event, rawUrl: string) => {
+    if (typeof rawUrl !== 'string') return;
+    let parsed: URL;
+    try {
+        parsed = new URL(rawUrl);
+    } catch {
+        return;
+    }
+    if (['http:', 'https:', 'mailto:'].includes(parsed.protocol)) {
+        await shell.openExternal(rawUrl);
+    }
+});
+
 function createWindow() {
     const win = new BrowserWindow({
         width: 1200,

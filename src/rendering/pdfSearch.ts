@@ -159,6 +159,26 @@ export function startBackgroundIndex() {
     setTimeout(tick, 0);
 }
 
+const textMeasureCtx = document.createElement('canvas').getContext('2d');
+const ascentRatios = new Map<string, number>();
+
+function getAscentRatio(fontFamily: string): number {
+    const cached = ascentRatios.get(fontFamily);
+    if (cached !== undefined) return cached;
+    let ratio = 0.8;
+    try {
+        if (textMeasureCtx) {
+            textMeasureCtx.font = `30px ${fontFamily}`;
+            const metrics = textMeasureCtx.measureText('');
+            const ascent = metrics.fontBoundingBoxAscent;
+            const descent = Math.abs(metrics.fontBoundingBoxDescent || 0);
+            if (ascent > 0 && ascent + descent > 0) ratio = ascent / (ascent + descent);
+        }
+    } catch {}
+    ascentRatios.set(fontFamily, ratio);
+    return ratio;
+}
+
 export async function renderPageTextLayer(
     page: any,
     container: HTMLElement,
@@ -173,6 +193,8 @@ export async function renderPageTextLayer(
         if (index.text.length === 0) return;
         const layer = document.createElement('div');
         layer.className = 'text-layer';
+        const styles = textContent.styles || {};
+        const scale = viewport.scale || PdfState.currentScale || 1;
         const spans: (HTMLElement | null)[] = [];
         for (const item of textContent.items) {
             if (typeof item.str !== 'string' || item.str.length === 0) {
@@ -183,12 +205,21 @@ export async function renderPageTextLayer(
             span.textContent = item.str;
             const tf = item.transform || [1, 0, 0, 1, 0, 0];
             const fontHeight = Math.hypot(tf[2], tf[3]) || 11;
+            const family: string = styles[item.fontName]?.fontFamily || 'serif';
+            span.style.fontFamily = family;
             const point = viewport.convertToViewportPoint(tf[4], tf[5]);
             span.style.left = `${point[0]}px`;
-            span.style.top = `${point[1] - fontHeight * 0.8 * PdfState.currentScale}px`;
-            span.style.fontSize = `${fontHeight * PdfState.currentScale}px`;
+            span.style.top = `${point[1] - fontHeight * scale * getAscentRatio(family)}px`;
+            span.style.fontSize = `${fontHeight * scale}px`;
+            const targetWidth = (typeof item.width === 'number' ? item.width : 0) * scale;
+            if (targetWidth > 0 && textMeasureCtx) {
+                textMeasureCtx.font = `${fontHeight * scale}px ${family}`;
+                const natural = textMeasureCtx.measureText(item.str).width;
+                if (natural > 0) span.style.transform = `scaleX(${targetWidth / natural})`;
+            }
             layer.appendChild(span);
             spans.push(span);
+            if (item.hasEOL) layer.appendChild(document.createElement('br'));
         }
         if (spans.length === 0) return;
         container.appendChild(layer);
