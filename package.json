@@ -36,16 +36,10 @@
         }
     },
     "devDependencies": {
-        "@tailwindcss/cli": "^4.3.3",
         "@tailwindcss/typography": "^0.5.20",
         "@tailwindcss/vite": "^4.3.3",
-        "@types/bun": "latest",
-        "@types/markdown-it": "^14.2.0",
-        "autoprefixer": "^10.5.4",
-        "concurrently": "^10.0.5",
         "electron": "^43.4.0",
         "electron-builder": "^26.15.3",
-        "postcss": "^8.5.26",
         "tailwindcss": "^4.3.3",
         "typescript": "^7.0.2",
         "vite": "^8.2.2",
@@ -55,8 +49,7 @@
     "dependencies": {
         "katex": "^0.18.4",
         "markdown-it": "^15.0.0",
-        "markdown-it-texmath": "^1.0.0",
-        "marked": "^18.0.10"
+        "markdown-it-texmath": "^1.0.0"
     },
     "optionalDependencies": {
         "@typescript/typescript-darwin-arm64": "^7.0.2",

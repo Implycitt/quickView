@@ -7,6 +7,7 @@ import {
     initSidebarResizer,
     toggleKeybindsModal,
     setSidebarTab,
+    setSidebarFollowLabel,
 } from './ui.js';
 import {
     renderAllMainPages,
@@ -14,15 +15,19 @@ import {
     goToPage,
     refreshSidebarSync,
     whenMainRenderIdle,
+    setSidebarFollowSuppressed,
+    toggleSidebarFollow,
     PdfState,
 } from './rendering/pdfRenderer.js';
 import { renderFileContent } from './rendering/fileHandler.js';
+import { initSearch } from './rendering/pdfSearch.js';
 import { initKeybinds } from './ui/keybinds.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     initDOM();
     initSidebarResizer();
     initKeybinds();
+    initSearch();
 
     if (DOM.closeKeybindsBtn) DOM.closeKeybindsBtn.addEventListener('click', () => toggleKeybindsModal());
     if (DOM.keybindsToggleBtn) DOM.keybindsToggleBtn.addEventListener('click', () => toggleKeybindsModal());
@@ -44,10 +49,15 @@ document.addEventListener('DOMContentLoaded', () => {
         DOM.tabSectionsBtn.addEventListener('click', () => setSidebarTab('sections'));
     }
 
-    window.addEventListener('qv:sidebar-tab-changed', refreshSidebarSync);
+    if (DOM.sidebarFollowBtn) {
+        DOM.sidebarFollowBtn.addEventListener('click', () => toggleSidebarFollow());
+    }
+    setSidebarFollowLabel(PdfState.sidebarFollow);
+
+    window.addEventListener('qv:sidebar-tab-changed', () => refreshSidebarSync(true));
     window.addEventListener('qv:sidebar-toggled', (e) => {
         if ((e as CustomEvent).detail?.opened) {
-            setTimeout(() => refreshSidebarSync(), 350);
+            setTimeout(() => refreshSidebarSync(true), 350);
             return;
         }
         refreshSidebarSync();
@@ -65,7 +75,7 @@ document.addEventListener('DOMContentLoaded', () => {
             PdfState.zoomMode = 'manual';
             PdfState.currentScale += 0.2;
             if (DOM.zoomLevelSpan) {
-                (DOM.zoomLevelSpan as HTMLInputElement).value = `${Math.round(PdfState.currentScale * 100)}%`;
+                DOM.zoomLevelSpan.value = `${Math.round(PdfState.currentScale * 100)}%`;
             }
             renderAllMainPages();
         });
@@ -77,7 +87,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (PdfState.currentScale > 0.4) {
                 PdfState.currentScale -= 0.2;
                 if (DOM.zoomLevelSpan) {
-                    (DOM.zoomLevelSpan as HTMLInputElement).value = `${Math.round(PdfState.currentScale * 100)}%`;
+                    DOM.zoomLevelSpan.value = `${Math.round(PdfState.currentScale * 100)}%`;
                 }
                 renderAllMainPages();
             }
@@ -119,9 +129,8 @@ document.addEventListener('DOMContentLoaded', () => {
         DOM.pageNext.addEventListener('click', () => stepPage(1));
     }
 
-    const zoomInput = DOM.zoomLevelSpan as HTMLInputElement;
-    if (zoomInput) {
-        zoomInput.addEventListener('change', (e) => {
+    if (DOM.zoomLevelSpan) {
+        DOM.zoomLevelSpan.addEventListener('change', (e) => {
             const target = e.target as HTMLInputElement;
             const parsedZoom = parseFloat(target.value.replace('%', ''));
 
@@ -154,36 +163,44 @@ document.addEventListener('DOMContentLoaded', () => {
         await renderFileContent(content);
     });
 
-    let resizeTimer: any = null;
+    let resizeTimer: ReturnType<typeof setTimeout> | null = null;
     window.addEventListener('resize', () => {
         if (!PdfState.currentPdfDoc) return;
         if (resizeTimer) clearTimeout(resizeTimer);
         resizeTimer = setTimeout(async () => {
             resizeTimer = null;
+            setSidebarFollowSuppressed(true);
             await renderAllMainPages();
             renderThumbnails();
-            setTimeout(() => refreshSidebarSync(), 350);
+            setTimeout(() => {
+                setSidebarFollowSuppressed(false);
+                refreshSidebarSync();
+            }, 350);
         }, 150);
     });
 
     const dprQuery = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
     dprQuery.addEventListener('change', () => {
         if (!PdfState.currentPdfDoc) return;
+        setSidebarFollowSuppressed(true);
         void renderAllMainPages().then(() => {
             renderThumbnails();
+            setSidebarFollowSuppressed(false);
             refreshSidebarSync();
         });
     });
 
-    let sidebarDragTimer: any = null;
+    let sidebarDragTimer: ReturnType<typeof setTimeout> | null = null;
     window.addEventListener('qv:sidebar-resized', () => {
         if (!PdfState.currentPdfDoc) return;
         if (sidebarDragTimer) clearTimeout(sidebarDragTimer);
         sidebarDragTimer = setTimeout(() => {
             sidebarDragTimer = null;
+            setSidebarFollowSuppressed(true);
             void whenMainRenderIdle().then(() => {
                 refreshSidebarSync();
                 renderThumbnails();
+                setSidebarFollowSuppressed(false);
             });
         }, 250);
     });

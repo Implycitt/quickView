@@ -1,4 +1,6 @@
 import { DOM, toggleSidebar, toggleKeybindsModal, setSidebarTab } from '../ui.js';
+import { openSearch } from '../rendering/pdfSearch.js';
+import { toggleSidebarFollow } from '../rendering/pdfRenderer.js';
 
 export function initKeybinds() {
     document.addEventListener('keydown', (e) => {
@@ -12,6 +14,12 @@ export function initKeybinds() {
         if (keyPressed === '/') {
             e.preventDefault();
             toggleKeybindsModal();
+        }
+
+        // fuzzy search
+        if (keyPressed === ';' || keyPressed === ':') {
+            e.preventDefault();
+            openSearch();
         }
 
         // close keybinds
@@ -45,6 +53,12 @@ export function initKeybinds() {
             }
         }
 
+        // toggle sidebar follow
+        if (keyPressed === 'l') {
+            e.preventDefault();
+            toggleSidebarFollow();
+        }
+
         // zoom in
         if (keyPressed === 'z') {
             e.preventDefault();
@@ -71,13 +85,13 @@ export function initKeybinds() {
             DOM.pageCounter?.select();
         }
 
-        // scroll up
+        // scroll down
         if (keyPressed === 'j') {
             e.preventDefault();
             performScroll(1);
         }
 
-        // scroll down
+        // scroll up
         if (keyPressed === 'k') {
             e.preventDefault();
             performScroll(-1);

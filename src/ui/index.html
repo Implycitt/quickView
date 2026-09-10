@@ -190,6 +190,39 @@
                 <div id="sidebar-tabs" class="hidden sticky top-0 z-10 flex gap-1 p-2 bg-gray-800/95 backdrop-blur">
                     <button id="tab-previews" class="sidebar-tab sidebar-tab-active">Previews</button>
                     <button id="tab-sections" class="sidebar-tab">Sections</button>
+                    <span class="w-px bg-gray-700 mx-1 shrink-0"></span>
+                    <button
+                        id="sidebar-follow-btn"
+                        title="Toggle sidebar follow (L)"
+                        class="flex items-center justify-center w-7 h-7 rounded-md text-gray-400 hover:text-lavender-400 hover:bg-gray-800 transition-colors cursor-pointer shrink-0"
+                    >
+                        <svg
+                            id="follow-icon-locked"
+                            xmlns="http://www.w3.org/2000/svg"
+                            class="h-3.5 w-3.5"
+                            viewBox="0 0 20 20"
+                            fill="currentColor"
+                        >
+                            <path
+                                fill-rule="evenodd"
+                                d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z"
+                                clip-rule="evenodd"
+                            />
+                        </svg>
+                        <svg
+                            id="follow-icon-unlocked"
+                            xmlns="http://www.w3.org/2000/svg"
+                            class="h-3.5 w-3.5 hidden"
+                            viewBox="0 0 20 20"
+                            fill="currentColor"
+                        >
+                            <path
+                                fill-rule="evenodd"
+                                d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2H8.5V5.5A1.5 1.5 0 1010 4v1a1 1 0 001-1 2.5 2.5 0 10-5 0V9h9a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2h1V5.5A4.5 4.5 0 0110 1z"
+                                clip-rule="evenodd"
+                            />
+                        </svg>
+                    </button>
                 </div>
                 <div id="sidebar-previews" class="p-4 w-full"></div>
                 <div id="sidebar-sections" class="p-4 w-full hidden"></div>
@@ -223,6 +256,32 @@
                     <p class="text-gray-500">Click the button at the top to load a Markdown or PDF file.</p>
                 </div>
             </main>
+        </div>
+
+        <div
+            id="search-overlay"
+            class="hidden fixed inset-x-0 top-0 z-50 flex justify-center pt-16 pointer-events-none"
+        >
+            <div
+                class="pointer-events-auto w-full max-w-lg mx-4 bg-gray-800/95 backdrop-blur-md border border-gray-700 rounded-lg shadow-2xl overflow-hidden"
+            >
+                <div class="flex items-center gap-3 px-3 py-2 border-b border-gray-700">
+                    <span class="text-lavender-400 font-bold font-mono text-sm">;</span>
+                    <input
+                        id="search-input"
+                        type="text"
+                        placeholder="Fuzzy search document…"
+                        class="flex-1 bg-transparent outline-none text-sm text-gray-100 placeholder:text-gray-500"
+                        autocomplete="off"
+                        spellcheck="false"
+                    />
+                    <span id="search-count" class="text-xs text-gray-500 whitespace-nowrap"></span>
+                </div>
+                <div
+                    id="search-results"
+                    class="max-h-52 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] scrollbar-none"
+                ></div>
+            </div>
         </div>
 
         <div
@@ -276,6 +335,14 @@
                     <li class="flex justify-between items-center">
                         <span>Show Keybinds</span>
                         <kbd class="bg-gray-900 border border-gray-600 px-2 py-1 rounded font-mono">/</kbd>
+                    </li>
+                    <li class="flex justify-between items-center">
+                        <span>Search Document (fuzzy)</span>
+                        <kbd class="bg-gray-900 border border-gray-600 px-2 py-1 rounded font-mono">;</kbd>
+                    </li>
+                    <li class="flex justify-between items-center">
+                        <span>Toggle Sidebar Follow</span>
+                        <kbd class="bg-gray-900 border border-gray-600 px-2 py-1 rounded font-mono">L</kbd>
                     </li>
                 </ul>
             </div>

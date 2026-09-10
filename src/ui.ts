@@ -5,6 +5,7 @@ export const DOM = {} as {
     sidebarTabs: HTMLElement;
     tabPreviewsBtn: HTMLButtonElement;
     tabSectionsBtn: HTMLButtonElement;
+    sidebarFollowBtn: HTMLButtonElement;
     sidebarToggle: HTMLButtonElement;
     mainContentNode: HTMLElement;
     pdfTools: HTMLElement;
@@ -29,6 +30,7 @@ export function initDOM() {
     DOM.sidebarTabs = document.getElementById('sidebar-tabs') as HTMLElement;
     DOM.tabPreviewsBtn = document.getElementById('tab-previews') as HTMLButtonElement;
     DOM.tabSectionsBtn = document.getElementById('tab-sections') as HTMLButtonElement;
+    DOM.sidebarFollowBtn = document.getElementById('sidebar-follow-btn') as HTMLButtonElement;
     DOM.sidebarToggle = document.getElementById('sidebar-toggle') as HTMLButtonElement;
     DOM.mainContentNode = document.getElementById('main-content') as HTMLElement;
     DOM.pdfTools = document.getElementById('pdf-tools') as HTMLElement;
@@ -62,6 +64,15 @@ export function toggleSidebar(forceState?: 'open' | 'closed') {
         DOM.sidebar.style.width = '0px';
         window.dispatchEvent(new CustomEvent('qv:sidebar-toggled', { detail: { opened: false } }));
     }
+}
+
+export function setSidebarFollowLabel(follow: boolean) {
+    if (!DOM.sidebarFollowBtn) return;
+    const locked = document.getElementById('follow-icon-locked');
+    const unlocked = document.getElementById('follow-icon-unlocked');
+    locked?.classList.toggle('hidden', !follow);
+    unlocked?.classList.toggle('hidden', follow);
+    DOM.sidebarFollowBtn.classList.toggle('sidebar-follow-active', follow);
 }
 
 export function setSidebarTab(tab: 'previews' | 'sections') {

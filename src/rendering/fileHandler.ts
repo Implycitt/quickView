@@ -10,6 +10,7 @@ import {
     resetPdfState,
     setCurrentFileName,
 } from './pdfRenderer.js';
+import { startBackgroundIndex, indexMarkdown } from './pdfSearch.js';
 
 function attachImageFallbacks(root: HTMLElement) {
     root.querySelectorAll('img').forEach((img) => {
@@ -81,7 +82,9 @@ export async function renderFileContent(content: FileResponse) {
         `;
         attachImageFallbacks(DOM.mainContentNode);
         initMdBreadcrumb(content.name, DOM.mainContentNode);
+        indexMarkdown(DOM.mainContentNode);
     } else if (fileName.endsWith('.pdf')) {
+        resetPdfState();
         if (DOM.pdfTools) DOM.pdfTools.classList.remove('hidden');
         if (DOM.sidebarTabs) DOM.sidebarTabs.classList.remove('hidden');
         toggleSidebar('open');
@@ -97,6 +100,7 @@ export async function renderFileContent(content: FileResponse) {
             await renderAllMainPages();
             await renderThumbnails();
             await renderOutline();
+            startBackgroundIndex();
         } catch (error) {
             console.error('Error rendering PDF:', error);
             DOM.mainContentNode.innerHTML = `<div class="p-8 text-red-500 flex justify-center">Failed to load PDF document.</div>`;

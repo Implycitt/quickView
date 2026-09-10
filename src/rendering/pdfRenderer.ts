@@ -1,4 +1,5 @@
-import { DOM, getSidebarTargetWidth, updateScrollModeClasses } from '../ui.js';
+import { DOM, getSidebarTargetWidth, updateScrollModeClasses, setSidebarFollowLabel } from '../ui.js';
+import { renderPageTextLayer, clearPageSpans, resetSearchState } from './pdfSearch.js';
 
 window.pdfjsLib.GlobalWorkerOptions.workerSrc =
     'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -8,6 +9,7 @@ export const PdfState = {
     currentScale: 1.0,
     isSnapMode: true,
     zoomMode: 'auto' as 'auto' | 'manual',
+    sidebarFollow: true,
 };
 
 const MAX_OUTPUT_SCALE = 2;
@@ -29,9 +31,9 @@ let pendingRenders = new Map<number, { task: any; canvas: HTMLCanvasElement }>()
 let renderQueue: number[] = [];
 let activeRenders = 0;
 let scrollRafPending = false;
-let scrollSettleTimer: any = null;
+let scrollSettleTimer: ReturnType<typeof setTimeout> | null = null;
 let thumbScrollRafPending = false;
-let thumbSettleTimer: any = null;
+let thumbSettleTimer: ReturnType<typeof setTimeout> | null = null;
 let thumbCanvases = new Map<number, HTMLCanvasElement>();
 let thumbPending = new Map<number, { task: any }>();
 let thumbQueue: number[] = [];
@@ -56,6 +58,7 @@ function captureScrollPos(): { page: number; fraction: number } | null {
 
 export function goToPage(pageNum: number) {
     if (!scrollContainer || pageContainers.length === 0 || !PdfState.currentPdfDoc) return;
+    followOverrideUntil = Date.now() + 600;
     const page = Math.min(pageContainers.length, Math.max(1, Math.round(pageNum)));
     const apply = () => {
         const container = pageContainers[page - 1];
@@ -86,6 +89,23 @@ function syncPageCounter() {
 }
 
 let activeThumbPage = 0;
+let thumbDoc: any = null;
+let followSuppressed = false;
+let followOverrideUntil = 0;
+
+export function setSidebarFollowSuppressed(suppressed: boolean) {
+    followSuppressed = suppressed;
+}
+
+export function toggleSidebarFollow(): boolean {
+    PdfState.sidebarFollow = !PdfState.sidebarFollow;
+    setSidebarFollowLabel(PdfState.sidebarFollow);
+    if (PdfState.sidebarFollow) {
+        followOverrideUntil = Date.now() + 800;
+        refreshSidebarSync(true);
+    }
+    return PdfState.sidebarFollow;
+}
 
 function syncActiveThumb() {
     if (!scrollContainer || !DOM.sidebarPreviews || !PdfState.currentPdfDoc) return;
@@ -100,7 +120,9 @@ function syncActiveThumb() {
     const thumb = ensureThumbMounted(page);
     if (thumb) {
         thumb.classList.add('thumb-active');
-        if (changed) scrollThumbIntoView(thumb);
+        if (changed && !followSuppressed && (PdfState.sidebarFollow || Date.now() < followOverrideUntil)) {
+            scrollThumbIntoView(thumb);
+        }
     }
 }
 
@@ -114,7 +136,7 @@ function previewsPaneVisible(): boolean {
 }
 
 let thumbFollowSmooth = false;
-let thumbFollowTimer: any = null;
+let thumbFollowTimer: ReturnType<typeof setTimeout> | null = null;
 
 function paneOffsetInSidebar(): number {
     const sidebar = document.getElementById('sidebar');
@@ -172,7 +194,7 @@ function restoreScrollPos(pos: { page: number; fraction: number } | null) {
     scrollContainer.style.removeProperty('scroll-behavior');
 }
 
-export function getFitToScreenScale(page: any, container: HTMLElement): number {
+function getFitToScreenScale(page: any, container: HTMLElement): number {
     const unscaledViewport = page.getViewport({ scale: 1.0 });
     const padding = 64;
     const scaleX = (container.clientWidth - padding) / unscaledViewport.width;
@@ -206,6 +228,9 @@ function cancelThumbRenders() {
 }
 
 export function resetPdfState() {
+    resetSearchState();
+    followSuppressed = false;
+    thumbDoc = null;
     cancelThumbRenders();
     thumbCanvases.clear();
     thumbElements = [];
@@ -471,7 +496,7 @@ function whenMeasurementDone(): Promise<void> {
     return new Promise((resolve) => measureWaiters.push(resolve));
 }
 
-export async function measurePageNow(pageNum: number) {
+async function measurePageNow(pageNum: number) {
     if (!PdfState.currentPdfDoc || pageSizes.has(pageNum)) return;
     try {
         const page = await PdfState.currentPdfDoc.getPage(pageNum);
@@ -487,15 +512,17 @@ export async function measurePageNow(pageNum: number) {
     } catch {}
 }
 
-export function refreshSidebarSync() {
+export function refreshSidebarSync(scrollToActive = false) {
     if (!PdfState.currentPdfDoc) return;
     syncActiveThumb();
     syncActiveOutline();
     syncOutlineBreadcrumb();
     if (!previewsPaneVisible()) return;
     scheduleThumbWindowRender();
-    const active = DOM.sidebarPreviews.querySelector<HTMLElement>('.thumb-active');
-    if (active) scrollThumbIntoView(active);
+    if (scrollToActive && !followSuppressed && (PdfState.sidebarFollow || Date.now() < followOverrideUntil)) {
+        const active = DOM.sidebarPreviews.querySelector<HTMLElement>('.thumb-active');
+        if (active) scrollThumbIntoView(active);
+    }
 }
 
 function queuePageRender(pageNum: number) {
@@ -555,6 +582,7 @@ async function renderPage(pageNum: number) {
         if (entry) entry.task = task;
         await task.promise;
         renderedCanvases.set(pageNum, canvas);
+        await renderPageTextLayer(page, container, viewport, pageNum);
         await addPageLinkLayer(page, container, viewport);
     } catch (err: any) {
         if (err?.name !== 'RenderingCancelledException') {
@@ -617,12 +645,15 @@ function suspendSnap() {
     window.addEventListener('keydown', resume, { capture: true });
 }
 
-function jumpToPage(pageNum: number, yCss: number | null = null) {
+export function jumpToPage(pageNum: number, yCss: number | null = null, center = false) {
+    followOverrideUntil = Date.now() + 600;
     const jump = () => {
         const target = document.getElementById(`page-container-${pageNum}`);
         if (!target || !scrollContainer) return;
         const y = yCss == null ? 0 : Math.max(0, Math.min(yCss, target.offsetHeight - 1));
-        const top = target.offsetTop + y;
+        const top = center
+            ? Math.max(0, target.offsetTop + y - scrollContainer.clientHeight / 2)
+            : target.offsetTop + y;
         if (y > 0) suspendSnap();
         const dist = Math.abs(top - scrollContainer.scrollTop);
         if (dist > (scrollContainer.clientHeight || 1) * 1.5) {
@@ -692,7 +723,7 @@ const outlinePositions = new Map<HTMLElement, { page: number; y: number }>();
 const outlineParentRow = new Map<HTMLElement, HTMLElement | null>();
 let activeOutlineRow: HTMLElement | null = null;
 let outlineFollowSmooth = false;
-let outlineFollowTimer: any = null;
+let outlineFollowTimer: ReturnType<typeof setTimeout> | null = null;
 
 function currentViewPosition(): { page: number; y: number } {
     const page = currentPageAtViewport();
@@ -704,13 +735,14 @@ function currentViewPosition(): { page: number; y: number } {
 
 function bestOutlineRow(rows: HTMLElement[]): HTMLElement | null {
     const pos = currentViewPosition();
+    const posY = pos.y / PdfState.currentScale;
     let best: HTMLElement | null = null;
     let bestPage = 0;
     let bestY = -Infinity;
     for (const row of rows) {
         const p = outlinePositions.get(row);
         if (!p) continue;
-        if (p.page > pos.page || (p.page === pos.page && p.y > pos.y)) continue;
+        if (p.page > pos.page || (p.page === pos.page && p.y > posY)) continue;
         if (p.page > bestPage || (p.page === bestPage && p.y >= bestY)) {
             bestPage = p.page;
             bestY = p.y;
@@ -789,7 +821,9 @@ function syncActiveOutline() {
             }
         }
     }
-    if (best) scrollOutlineRowIntoView(best);
+    if (best && !followSuppressed && (PdfState.sidebarFollow || Date.now() < followOverrideUntil)) {
+        scrollOutlineRowIntoView(best);
+    }
 }
 
 export function setCurrentFileName(name: string | null) {
@@ -846,7 +880,7 @@ async function linkOutlinePages() {
         const target = await resolveOutlineDest(dest);
         if (target) {
             row.dataset.page = String(target.page);
-            outlinePositions.set(row, { page: target.page, y: target.y ?? 0 });
+            outlinePositions.set(row, { page: target.page, y: (target.y ?? 0) / PdfState.currentScale });
         }
     }
 }
@@ -933,7 +967,10 @@ function evictOutside(first: number, last: number) {
     for (const [pageNum, canvas] of renderedCanvases) {
         if (pageNum < first - EVICT_BEHIND_PAGES || pageNum > last + EVICT_AHEAD_PAGES) {
             canvas.remove();
-            pageContainers[pageNum - 1]?.querySelector('.pdf-link-layer')?.remove();
+            const container = pageContainers[pageNum - 1];
+            container?.querySelector('.text-layer')?.remove();
+            container?.querySelector('.pdf-link-layer')?.remove();
+            clearPageSpans(pageNum);
             renderedCanvases.delete(pageNum);
         }
     }
@@ -1031,35 +1068,29 @@ export async function renderThumbnails() {
     thumbElements = [];
 
     const sidebar = document.getElementById('sidebar');
+    if (!sidebar) return;
     const savedAnchor = previewsPaneVisible() ? captureSidebarAnchor() : null;
     DOM.sidebarPreviews.innerHTML = '';
     DOM.sidebarPreviews.style.position = 'relative';
 
-    if (sidebar) {
-        sidebar.onscroll = null;
-    }
+    sidebar.onscroll = null;
     if (thumbSettleTimer) {
         clearTimeout(thumbSettleTimer);
         thumbSettleTimer = null;
     }
 
-    const total = PdfState.currentPdfDoc.numPages;
     rebuildThumbLayout();
 
-    if (sidebar) {
-        if (savedAnchor) sidebar.scrollTop = restoreSidebarAnchor(savedAnchor);
-        sidebar.removeEventListener('scroll', onThumbScroll);
-        sidebar.addEventListener('scroll', onThumbScroll, { passive: true });
-        scheduleThumbWindowRender();
-    } else {
-        for (let i = 1; i <= total; i++) {
-            ensureThumbMounted(i);
-            queueThumbRender(i);
-        }
-    }
+    if (savedAnchor) sidebar.scrollTop = restoreSidebarAnchor(savedAnchor);
+    sidebar.removeEventListener('scroll', onThumbScroll);
+    sidebar.addEventListener('scroll', onThumbScroll, { passive: true });
+    scheduleThumbWindowRender();
 
-    activeThumbPage = 0;
-    thumbFollowSmooth = true;
+    const freshDoc = PdfState.currentPdfDoc !== thumbDoc;
+    thumbDoc = PdfState.currentPdfDoc;
+    if (freshDoc) followOverrideUntil = Date.now() + 2000;
+    activeThumbPage = freshDoc ? 0 : activeThumbPage;
+    thumbFollowSmooth = freshDoc;
     syncActiveThumb();
     thumbFollowSmooth = false;
 }
