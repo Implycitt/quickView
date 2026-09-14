@@ -1,9 +1,6 @@
 import { DOM, getSidebarTargetWidth, updateScrollModeClasses, setSidebarFollowLabel } from '../ui.js';
 import { renderPageTextLayer, clearPageSpans, resetSearchState } from './pdfSearch.js';
 
-window.pdfjsLib.GlobalWorkerOptions.workerSrc =
-    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-
 export const PdfState = {
     currentPdfDoc: null as any,
     currentScale: 1.0,
@@ -227,7 +224,12 @@ function cancelThumbRenders() {
     thumbQueue = [];
 }
 
+function isObsoleteRender(err: any, doc: any): boolean {
+    return err?.name === 'RenderingCancelledException' || PdfState.currentPdfDoc !== doc;
+}
+
 export function resetPdfState() {
+    const outgoing = PdfState.currentPdfDoc;
     resetSearchState();
     followSuppressed = false;
     thumbDoc = null;
@@ -245,6 +247,7 @@ export function resetPdfState() {
     resetViewer();
     const sidebar = document.getElementById('sidebar');
     if (sidebar) sidebar.removeEventListener('scroll', onThumbScroll);
+    if (outgoing) void outgoing.destroy().catch(() => {});
 }
 
 function resetViewer() {
@@ -554,10 +557,11 @@ function pumpRenderQueue() {
 
 async function renderPage(pageNum: number) {
     const container = pageContainers[pageNum - 1];
-    if (!container || !container.isConnected || !PdfState.currentPdfDoc) return;
+    const doc = PdfState.currentPdfDoc;
+    if (!container || !container.isConnected || !doc) return;
     try {
-        const page = await PdfState.currentPdfDoc.getPage(pageNum);
-        if (!container.isConnected || !PdfState.currentPdfDoc) return;
+        const page = await doc.getPage(pageNum);
+        if (!container.isConnected || PdfState.currentPdfDoc !== doc) return;
         const viewport = page.getViewport({ scale: PdfState.currentScale });
         if (!pageSizes.has(pageNum) && !measuring) {
             pageSizes.set(pageNum, { width: viewport.width, height: viewport.height });
@@ -581,11 +585,13 @@ async function renderPage(pageNum: number) {
         if (entry) entry.canvas = canvas;
         if (entry) entry.task = task;
         await task.promise;
+        if (!container.isConnected || PdfState.currentPdfDoc !== doc) return;
         renderedCanvases.set(pageNum, canvas);
         await renderPageTextLayer(page, container, viewport, pageNum);
+        if (PdfState.currentPdfDoc !== doc) return;
         await addPageLinkLayer(page, container, viewport);
     } catch (err: any) {
-        if (err?.name !== 'RenderingCancelledException') {
+        if (!isObsoleteRender(err, doc)) {
             console.error(`Error rendering page ${pageNum}:`, err);
         }
     }
@@ -1185,10 +1191,11 @@ function pumpThumbQueue() {
 
 async function renderThumb(pageNum: number) {
     const thumb = DOM.sidebarPreviews?.querySelector<HTMLCanvasElement>(`[data-page-num="${pageNum}"]`);
-    if (!thumb || !thumb.isConnected || !PdfState.currentPdfDoc) return;
+    const doc = PdfState.currentPdfDoc;
+    if (!thumb || !thumb.isConnected || !doc) return;
     try {
-        const page = await PdfState.currentPdfDoc.getPage(pageNum);
-        if (!thumb.isConnected || !PdfState.currentPdfDoc) return;
+        const page = await doc.getPage(pageNum);
+        if (!thumb.isConnected || PdfState.currentPdfDoc !== doc) return;
         const baseViewport = page.getViewport({ scale: 1 });
         const targetWidth = Math.max(120, getSidebarTargetWidth() - THUMB_INSET * 2);
         const scale = (targetWidth / baseViewport.width) * getOutputScale();
@@ -1207,10 +1214,11 @@ async function renderThumb(pageNum: number) {
         const entry = thumbPending.get(pageNum);
         if (entry) entry.task = task;
         await task.promise;
+        if (!thumb.isConnected || PdfState.currentPdfDoc !== doc) return;
         thumbCanvases.set(pageNum, thumb);
         thumb.dataset.rendered = '1';
     } catch (err: any) {
-        if (err?.name !== 'RenderingCancelledException') {
+        if (!isObsoleteRender(err, doc)) {
             console.error(`Error rendering thumbnail ${pageNum}:`, err);
         }
     }

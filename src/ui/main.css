@@ -1516,31 +1516,55 @@
     box-shadow: inset 0 -1px 0 rgba(59, 130, 246, 0.6);
 }
 
+.hiddenCanvasElement {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 0;
+    height: 0;
+    display: none;
+}
+
 .text-layer {
     position: absolute;
+    text-align: initial;
     inset: 0;
     overflow: hidden;
     line-height: 1;
     z-index: 1;
     -webkit-text-size-adjust: none;
     text-size-adjust: none;
+    forced-color-adjust: none;
     transform-origin: 0 0;
 }
 
-.text-layer > span {
+.text-layer > :is(span, br) {
     position: absolute;
     white-space: pre;
     color: transparent;
     cursor: text;
-    transform-origin: 0 0;
+    transform-origin: 0% 0%;
     -webkit-user-select: text;
     user-select: text;
+}
+
+.text-layer > span::selection {
+    color: transparent;
+    background: rgba(167, 139, 250, 0.45);
+}
+
+.text-layer > br::selection {
+    background: transparent;
 }
 
 .text-layer .pdf-hl {
     background: rgba(167, 139, 250, 0.45);
     border-radius: 2px;
     box-shadow: 0 0 0 1px rgba(167, 139, 250, 0.3);
+}
+
+.text-layer > span > .pdf-hl {
+    display: inline-block;
 }
 
 .search-result {

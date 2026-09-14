@@ -1,7 +1,7 @@
 import { DOM, toggleSidebar } from '../ui.js';
 import type { FileResponse } from '../types/types.d.ts';
 
-import { renderMarkdownWithCallouts, initMdBreadcrumb } from './mdRenderer.js';
+import { renderMarkdownWithCallouts, initMdBreadcrumb, attachMarkdownLinks } from './mdRenderer.js';
 import {
     PdfState,
     renderAllMainPages,
@@ -11,6 +11,7 @@ import {
     setCurrentFileName,
 } from './pdfRenderer.js';
 import { startBackgroundIndex, indexMarkdown } from './pdfSearch.js';
+import { loadPdfjs } from '../pdfjs.js';
 
 function attachImageFallbacks(root: HTMLElement) {
     root.querySelectorAll('img').forEach((img) => {
@@ -81,6 +82,8 @@ export async function renderFileContent(content: FileResponse) {
             </div>
         `;
         attachImageFallbacks(DOM.mainContentNode);
+        const article = DOM.mainContentNode.querySelector('article');
+        if (article) attachMarkdownLinks(article as HTMLElement);
         initMdBreadcrumb(content.name, DOM.mainContentNode);
         indexMarkdown(DOM.mainContentNode);
     } else if (fileName.endsWith('.pdf')) {
@@ -89,9 +92,11 @@ export async function renderFileContent(content: FileResponse) {
         if (DOM.sidebarTabs) DOM.sidebarTabs.classList.remove('hidden');
         toggleSidebar('open');
 
+        let loadingTask: any = null;
         try {
             const uint8Array = new Uint8Array(content.data);
-            const loadingTask = window.pdfjsLib.getDocument({ data: uint8Array });
+            const pdfjsLib = await loadPdfjs();
+            loadingTask = pdfjsLib.getDocument({ data: uint8Array });
             PdfState.currentPdfDoc = await loadingTask.promise;
             setCurrentFileName(content.name);
 
@@ -103,6 +108,8 @@ export async function renderFileContent(content: FileResponse) {
             startBackgroundIndex();
         } catch (error) {
             console.error('Error rendering PDF:', error);
+            resetPdfState();
+            if (loadingTask) void loadingTask.destroy().catch(() => {});
             DOM.mainContentNode.innerHTML = `<div class="p-8 text-red-500 flex justify-center">Failed to load PDF document.</div>`;
         }
     }

@@ -4,6 +4,10 @@ import { toggleSidebarFollow } from '../rendering/pdfRenderer.js';
 
 export function initKeybinds() {
     document.addEventListener('keydown', (e) => {
+        if (e.ctrlKey || e.metaKey || e.altKey) {
+            return;
+        }
+
         if (['INPUT', 'TEXTAREA'].includes((document.activeElement as HTMLElement)?.tagName)) {
             return;
         }

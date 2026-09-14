@@ -106,6 +106,17 @@ export function renderMarkdownWithCallouts(rawMarkdown: string, filePath = ''): 
     return html;
 }
 
+export function attachMarkdownLinks(root: HTMLElement) {
+    root.addEventListener('click', (event) => {
+        const anchor = (event.target as HTMLElement | null)?.closest?.('a[href]') as HTMLAnchorElement | null;
+        if (!anchor) return;
+        const href = anchor.getAttribute('href') ?? '';
+        if (!/^(https?:|mailto:)/i.test(href)) return;
+        event.preventDefault();
+        void window.electronAPI.openExternal(href);
+    });
+}
+
 let mdFileName: string | null = null;
 let mdHeadings: HTMLElement[] = [];
 let mdScrollHandler: (() => void) | null = null;

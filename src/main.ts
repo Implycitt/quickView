@@ -20,7 +20,7 @@ if (args.length > 0 && !args[0].startsWith('--')) {
 
 async function getFilePayload(targetPath: string) {
     const fileName = path.basename(targetPath);
-    if (fileName.endsWith('.md')) {
+    if (fileName.toLowerCase().endsWith('.md')) {
         const content = await fs.promises.readFile(targetPath, 'utf-8');
         return { name: fileName, path: targetPath, content };
     } else {
