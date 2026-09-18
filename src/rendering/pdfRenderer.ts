@@ -10,23 +10,43 @@ export const PdfState = {
 };
 
 const MAX_OUTPUT_SCALE = 2;
-const RENDER_BEHIND_PAGES = 2;
-const RENDER_AHEAD_PAGES = 5;
-const EVICT_BEHIND_PAGES = 8;
-const EVICT_AHEAD_PAGES = 16;
 const RENDER_CONCURRENCY = 3;
 const MEASURE_CHUNK = 15;
 const THUMB_EVICT_RADIUS = 40;
 const THUMB_GAP = 16;
 const THUMB_INSET = 16;
 
+const MOUNT_BEHIND_PAGES = 3;
+const MOUNT_AHEAD_PAGES = 6;
+
+const LARGE_DOC_PAGES = 700;
+const LARGE_DOC_MOUNT_BEHIND = 2;
+const LARGE_DOC_MOUNT_AHEAD = 4;
+const LARGE_DOC_THUMB_EVICT_RADIUS = 12;
+const DEFAULT_PAGE_POINTS = { width: 612, height: 792 };
+const DEFAULT_PAGE_PADDING = 32;
+const DEFAULT_PAGE_GAP = 32;
+const PAGE_CONTAINER_CLASS = 'pdf-page-container mb-8 shadow-lg bg-white shrink-0 relative';
+
 let scrollContainer: HTMLElement | null = null;
 let pageContainers: HTMLElement[] = [];
-let pageSizes = new Map<number, { width: number; height: number }>();
+let pageCount = 0;
+let mountedPages: number[] = [];
+let topSpacer: HTMLElement | null = null;
+let bottomSpacer: HTMLElement | null = null;
+let spacerTopHeight = -1;
+let spacerBottomHeight = -1;
+let pageSizePoints = new Map<number, { width: number; height: number }>();
+let placeholderPoints = { ...DEFAULT_PAGE_POINTS };
 let renderedCanvases = new Map<number, HTMLCanvasElement>();
 let pendingRenders = new Map<number, { task: any; canvas: HTMLCanvasElement }>();
+let pageHandles = new Map<number, any>();
 let renderQueue: number[] = [];
-let activeRenders = 0;
+let activeMainRenders = 0;
+let activeThumbRenders = 0;
+let pageTops: number[] = [];
+let pageGeometryDirty = true;
+let geoLayout: { baseTop: number; gap: number } | null = null;
 let scrollRafPending = false;
 let scrollSettleTimer: ReturnType<typeof setTimeout> | null = null;
 let thumbScrollRafPending = false;
@@ -43,32 +63,249 @@ let savedScrollPos: { page: number; fraction: number } | null = null;
 let lastKnownPage = 1;
 let currentFileName: string | null = null;
 
+function sizeForPoints(points: { width: number; height: number }): { width: number; height: number } {
+    const scale = PdfState.currentScale || 1;
+    return { width: points.width * scale, height: points.height * scale };
+}
+
+function pagePointSize(pageNum: number): { width: number; height: number } {
+    return pageSizePoints.get(pageNum) ?? placeholderPoints;
+}
+
+function pageWidth(pageNum: number): number {
+    return pagePointSize(pageNum).width * (PdfState.currentScale || 1);
+}
+
+function pageHeight(pageNum: number): number {
+    return pagePointSize(pageNum).height * (PdfState.currentScale || 1);
+}
+
+function recordPagePoints(pageNum: number, points: { width: number; height: number }) {
+    const existing = pageSizePoints.get(pageNum);
+    if (existing && Math.abs(existing.width - points.width) < 0.5 && Math.abs(existing.height - points.height) < 0.5) {
+        return;
+    }
+    pageSizePoints.set(pageNum, points);
+    applyPageSize(pageNum);
+}
+
+function applyPageSize(pageNum: number) {
+    const container = pageContainers[pageNum - 1];
+    if (container) {
+        container.style.width = `${pageWidth(pageNum)}px`;
+        container.style.height = `${pageHeight(pageNum)}px`;
+    }
+    pageGeometryDirty = true;
+    thumbLayoutDirty = true;
+    scheduleMainWindowRender();
+}
+
+function ensurePageGeometry() {
+    if (!pageGeometryDirty) return;
+    pageGeometryDirty = false;
+    const total = pageCount;
+    if (total === 0) {
+        pageTops = [];
+        return;
+    }
+    const layout = geoLayout ?? { baseTop: DEFAULT_PAGE_PADDING, gap: DEFAULT_PAGE_GAP };
+    const scale = PdfState.currentScale || 1;
+    const tops = new Array<number>(total);
+    let y = layout.baseTop;
+    for (let i = 0; i < total; i++) {
+        tops[i] = y;
+        y += pagePointSize(i + 1).height * scale + layout.gap;
+    }
+    pageTops = tops;
+}
+
+function pageTop(pageNum: number): number {
+    ensurePageGeometry();
+    const top = pageTops[pageNum - 1];
+    if (top !== undefined) return top;
+    return geoLayout?.baseTop ?? DEFAULT_PAGE_PADDING;
+}
+
+function mountMargins(): { behind: number; ahead: number } {
+    if (pageCount > LARGE_DOC_PAGES) return { behind: LARGE_DOC_MOUNT_BEHIND, ahead: LARGE_DOC_MOUNT_AHEAD };
+    return { behind: MOUNT_BEHIND_PAGES, ahead: MOUNT_AHEAD_PAGES };
+}
+
+function updateSpacers() {
+    if (!topSpacer || !bottomSpacer || mountedPages.length === 0 || pageCount === 0) return;
+    const first = mountedPages[0];
+    const last = mountedPages[mountedPages.length - 1];
+    const base = geoLayout?.baseTop ?? DEFAULT_PAGE_PADDING;
+    const top = Math.max(0, pageTop(first) - base);
+    const bottom = Math.max(0, pageTop(pageCount) + pageHeight(pageCount) - pageTop(last) - pageHeight(last));
+    if (spacerTopHeight !== top) {
+        spacerTopHeight = top;
+        topSpacer.style.height = `${top}px`;
+    }
+    if (spacerBottomHeight !== bottom) {
+        spacerBottomHeight = bottom;
+        bottomSpacer.style.height = `${bottom}px`;
+    }
+}
+
+function createPageContainer(pageNum: number): HTMLElement {
+    const size = sizeForPoints(pagePointSize(pageNum));
+    const container = document.createElement('div');
+    container.id = `page-container-${pageNum}`;
+    container.className = PAGE_CONTAINER_CLASS;
+    container.dataset.pageNum = String(pageNum);
+    container.style.width = `${size.width}px`;
+    container.style.height = `${size.height}px`;
+    if (PdfState.isSnapMode && !snapSuspended) container.classList.add('snap-center');
+    return container;
+}
+
+function mountPage(pageNum: number): void {
+    if (!scrollContainer || !bottomSpacer || pageContainers[pageNum - 1]) return;
+    const container = createPageContainer(pageNum);
+    let inserted = false;
+    for (const mounted of mountedPages) {
+        if (mounted > pageNum) {
+            pageContainers[mounted - 1].before(container);
+            inserted = true;
+            break;
+        }
+    }
+    if (!inserted) bottomSpacer.before(container);
+    pageContainers[pageNum - 1] = container;
+    mountedPages.push(pageNum);
+    mountedPages.sort((a, b) => a - b);
+}
+
+function unmountPage(pageNum: number) {
+    pageContainers[pageNum - 1]?.remove();
+    pageContainers[pageNum - 1] = undefined as any;
+    const idx = mountedPages.indexOf(pageNum);
+    if (idx >= 0) mountedPages.splice(idx, 1);
+    const entry = pendingRenders.get(pageNum);
+    if (entry) {
+        try {
+            entry.task?.cancel();
+        } catch {}
+        entry.canvas?.remove();
+        pendingRenders.delete(pageNum);
+    }
+    if (renderQueue.length > 0) renderQueue = renderQueue.filter((p) => p !== pageNum);
+    renderedCanvases.delete(pageNum);
+    clearPageSpans(pageNum);
+    releasePage(pageNum);
+}
+
+function unmountAllPages() {
+    for (const pageNum of [...mountedPages]) unmountPage(pageNum);
+}
+
+function syncMountedPages(first: number, last: number) {
+    if (!scrollContainer || pageCount === 0) return;
+    first = Math.max(1, Math.min(pageCount, first));
+    last = Math.max(first, Math.min(pageCount, last));
+    const needed = last - first + 1;
+    if (mountedPages.length === needed && mountedPages[0] === first && mountedPages[mountedPages.length - 1] === last) {
+        updateSpacers();
+        return;
+    }
+    const overlaps = mountedPages.some((p) => p >= first && p <= last);
+    if (!overlaps) unmountAllPages();
+    for (const pageNum of [...mountedPages]) {
+        if (pageNum < first || pageNum > last) unmountPage(pageNum);
+    }
+    for (let pageNum = first; pageNum <= last; pageNum++) {
+        if (!pageContainers[pageNum - 1]) mountPage(pageNum);
+    }
+    updateSpacers();
+}
+
+function mountAroundPage(pageNum: number) {
+    const margins = mountMargins();
+    syncMountedPages(pageNum - margins.behind, pageNum + margins.ahead);
+}
+
+function applySnapClassesToMounted() {
+    const on = PdfState.isSnapMode && !snapSuspended;
+    for (const pageNum of mountedPages) {
+        pageContainers[pageNum - 1]?.classList.toggle('snap-center', on);
+    }
+}
+
+function samplePageLayout() {
+    if (!scrollContainer || mountedPages.length === 0) return;
+    const scroller = scrollContainer;
+    const scrollerTop = scroller.getBoundingClientRect().top;
+    const contentOffset = (el: HTMLElement) => el.getBoundingClientRect().top - scrollerTop + scroller.scrollTop;
+    const first = mountedPages[0];
+    const firstEl = pageContainers[first - 1];
+    if (!firstEl) return;
+    const spacerAbove = Math.max(0, pageTop(first) - (geoLayout?.baseTop ?? DEFAULT_PAGE_PADDING));
+    const baseTop = contentOffset(firstEl) - spacerAbove;
+    let gap = geoLayout?.gap ?? DEFAULT_PAGE_GAP;
+    const nextEl = pageContainers[first];
+    if (nextEl && mountedPages.includes(first + 1)) {
+        const measured = contentOffset(nextEl) - contentOffset(firstEl) - pageHeight(first);
+        if (measured >= 0 && measured < 200) gap = measured;
+    }
+    if (geoLayout && Math.abs(geoLayout.baseTop - baseTop) < 0.5 && Math.abs(geoLayout.gap - gap) < 0.5) return;
+    geoLayout = { baseTop, gap };
+    pageGeometryDirty = true;
+    ensurePageGeometry();
+    updateSpacers();
+}
+
+function thumbEvictRadius(): number {
+    const total = PdfState.currentPdfDoc?.numPages ?? 0;
+    return total > LARGE_DOC_PAGES ? LARGE_DOC_THUMB_EVICT_RADIUS : THUMB_EVICT_RADIUS;
+}
+
+export function isViewerBusy(): boolean {
+    return (
+        scrollRafPending ||
+        thumbScrollRafPending ||
+        scrollSettleTimer !== null ||
+        thumbSettleTimer !== null ||
+        activeMainRenders > 0 ||
+        activeThumbRenders > 0 ||
+        pendingRenders.size > 0 ||
+        renderQueue.length > 0 ||
+        thumbQueue.length > 0
+    );
+}
+
+function releasePage(pageNum: number) {
+    if (pendingRenders.has(pageNum) || renderedCanvases.has(pageNum) || thumbPending.has(pageNum)) return;
+    const page = pageHandles.get(pageNum);
+    if (!page) return;
+    pageHandles.delete(pageNum);
+    try {
+        page.cleanup();
+    } catch {}
+}
+
 function captureScrollPos(): { page: number; fraction: number } | null {
-    if (!scrollContainer || pageContainers.length === 0) return savedScrollPos;
+    if (!scrollContainer || pageCount === 0) return savedScrollPos;
     const scrollTop = scrollContainer.scrollTop;
     const page = currentPageAtViewport();
-    const container = pageContainers[page - 1];
-    if (!container) return null;
-    const height = container.offsetHeight || 1;
-    return { page, fraction: Math.max(0, Math.min(1, (scrollTop - container.offsetTop) / height)) };
+    const height = pageHeight(page) || 1;
+    return { page, fraction: Math.max(0, Math.min(1, (scrollTop - pageTop(page)) / height)) };
 }
 
 export function goToPage(pageNum: number) {
-    if (!scrollContainer || pageContainers.length === 0 || !PdfState.currentPdfDoc) return;
+    if (!scrollContainer || pageCount === 0 || !PdfState.currentPdfDoc) return;
     followOverrideUntil = Date.now() + 600;
-    const page = Math.min(pageContainers.length, Math.max(1, Math.round(pageNum)));
+    const page = Math.min(pageCount, Math.max(1, Math.round(pageNum)));
+    mountAroundPage(page);
     const apply = () => {
-        const container = pageContainers[page - 1];
-        if (!container || !container.isConnected || !scrollContainer) return;
+        if (!scrollContainer) return;
         scrollContainer.style.scrollBehavior = 'auto';
-        scrollContainer.scrollTop = container.offsetTop;
+        scrollContainer.scrollTop = pageTop(page);
         scrollContainer.style.removeProperty('scroll-behavior');
     };
-    if (pageSizes.has(page)) {
-        apply();
-        return;
-    }
     apply();
+    scheduleMainWindowRender();
+    if (pageSizePoints.has(page)) return;
     void Promise.all([measurePageNow(page), whenMeasurementDone()]).then(() => {
         if (!PdfState.currentPdfDoc || Math.abs(currentPageAtViewport() - page) > 3) return;
         apply();
@@ -175,16 +412,16 @@ function scrollThumbIntoView(thumb: HTMLElement) {
 }
 
 function restoreScrollPos(pos: { page: number; fraction: number } | null) {
-    if (!pos || !scrollContainer || pageContainers.length === 0) return;
-    const page = Math.min(pageContainers.length, Math.max(1, pos.page));
-    const container = pageContainers[page - 1];
-    if (!container) return;
+    if (!pos || !scrollContainer || pageCount === 0) return;
+    const page = Math.min(pageCount, Math.max(1, pos.page));
+    mountAroundPage(page);
+    const height = pageHeight(page);
     let target: number;
     if (PdfState.isSnapMode && !snapSuspended) {
-        target = container.offsetTop + (container.offsetHeight - scrollContainer.clientHeight) / 2;
+        target = pageTop(page) + (height - scrollContainer.clientHeight) / 2;
         target = Math.max(0, target);
     } else {
-        target = container.offsetTop + pos.fraction * container.offsetHeight;
+        target = pageTop(page) + pos.fraction * height;
     }
     scrollContainer.style.scrollBehavior = 'auto';
     scrollContainer.scrollTop = target;
@@ -211,7 +448,7 @@ function cancelPendingRenders() {
     }
     pendingRenders.clear();
     renderQueue = [];
-    activeRenders = 0;
+    activeMainRenders = 0;
 }
 
 function cancelThumbRenders() {
@@ -222,14 +459,16 @@ function cancelThumbRenders() {
     }
     thumbPending.clear();
     thumbQueue = [];
+    activeThumbRenders = 0;
 }
 
 function isObsoleteRender(err: any, doc: any): boolean {
     return err?.name === 'RenderingCancelledException' || PdfState.currentPdfDoc !== doc;
 }
 
-export function resetPdfState() {
+export function resetPdfState(keepPosition = false) {
     const outgoing = PdfState.currentPdfDoc;
+    const kept = keepPosition ? captureScrollPos() : null;
     resetSearchState();
     followSuppressed = false;
     thumbDoc = null;
@@ -238,8 +477,17 @@ export function resetPdfState() {
     thumbElements = [];
     thumbTops = [];
     thumbAspects.clear();
-    savedScrollPos = null;
-    lastKnownPage = 1;
+    thumbLayoutDirty = true;
+    outlineRows = [];
+    activeOutlineRow = null;
+    pageSizePoints.clear();
+    pageHandles.clear();
+    pageTops = [];
+    pageGeometryDirty = true;
+    geoLayout = null;
+    placeholderPoints = { ...DEFAULT_PAGE_POINTS };
+    savedScrollPos = kept;
+    lastKnownPage = kept?.page ?? 1;
     currentFileName = null;
     syncOutlineBreadcrumb();
     PdfState.currentPdfDoc = null;
@@ -254,8 +502,18 @@ function resetViewer() {
     viewerVersion++;
     cancelPendingRenders();
     renderedCanvases.clear();
-    pageSizes.clear();
+    pageHandles.clear();
     pageContainers = [];
+    pageCount = 0;
+    mountedPages = [];
+    topSpacer = null;
+    bottomSpacer = null;
+    spacerTopHeight = -1;
+    spacerBottomHeight = -1;
+    pageTops = [];
+    pageGeometryDirty = true;
+    geoLayout = null;
+    invalidateOutlineLayout();
     if (scrollContainer) {
         scrollContainer.onscroll = null;
         scrollContainer.innerHTML = '';
@@ -269,30 +527,30 @@ function resetViewer() {
 }
 
 function pageAtOffset(y: number): number {
-    if (pageContainers.length === 0) return 1;
+    if (pageCount === 0) return 1;
+    ensurePageGeometry();
     let lo = 0;
-    let hi = pageContainers.length - 1;
+    let hi = pageTops.length - 1;
     while (lo < hi) {
         const mid = (lo + hi) >> 1;
-        if (pageContainers[mid].offsetTop < y) lo = mid + 1;
+        if (pageTops[mid] < y) lo = mid + 1;
         else hi = mid;
     }
     return lo + 1;
 }
 
 function currentPageAtViewport(): number {
-    if (pageContainers.length === 0 || !scrollContainer) return lastKnownPage;
+    if (pageCount === 0 || !scrollContainer) return lastKnownPage;
     const top = scrollContainer.scrollTop;
     const bottom = top + (scrollContainer.clientHeight || 1);
     const mid = (top + bottom) / 2;
     let best = pageAtOffset(mid);
     let bestVisible = -1;
     const start = Math.max(1, best - 1);
-    const end = Math.min(pageContainers.length, best + 1);
+    const end = Math.min(pageCount, best + 1);
     for (let p = start; p <= end; p++) {
-        const el = pageContainers[p - 1];
-        const elTop = el.offsetTop;
-        const elBottom = elTop + el.offsetHeight;
+        const elTop = pageTop(p);
+        const elBottom = elTop + pageHeight(p);
         const visible = Math.min(elBottom, bottom) - Math.max(elTop, top);
         if (visible > bestVisible) {
             bestVisible = visible;
@@ -324,8 +582,13 @@ async function runRenderAllMainPages() {
     viewerVersion = version;
     cancelPendingRenders();
     renderedCanvases.clear();
-    pageSizes.clear();
+    pageHandles.clear();
     pageContainers = [];
+    mountedPages = [];
+    pageCount = 0;
+    pageTops = [];
+    pageGeometryDirty = true;
+    geoLayout = null;
     if (scrollSettleTimer) {
         clearTimeout(scrollSettleTimer);
         scrollSettleTimer = null;
@@ -338,16 +601,16 @@ async function runRenderAllMainPages() {
 
     const total = PdfState.currentPdfDoc.numPages;
 
-    let placeholder = { width: 612, height: 792 };
+    placeholderPoints = { ...DEFAULT_PAGE_POINTS };
     try {
         const firstPage = await PdfState.currentPdfDoc.getPage(1);
         if (version !== viewerVersion) return;
         if (PdfState.zoomMode === 'auto') {
             PdfState.currentScale = getFitToScreenScale(firstPage, DOM.mainContentNode);
         }
-        const viewport = firstPage.getViewport({ scale: PdfState.currentScale });
-        placeholder = { width: viewport.width, height: viewport.height };
-        pageSizes.set(1, placeholder);
+        const baseViewport = firstPage.getViewport({ scale: 1 });
+        placeholderPoints = { width: baseViewport.width, height: baseViewport.height };
+        pageSizePoints.set(1, placeholderPoints);
     } catch (err) {
         console.error('Error measuring first page:', err);
     }
@@ -365,21 +628,18 @@ async function runRenderAllMainPages() {
         DOM.pageTotal.textContent = `/ ${total}`;
     }
 
-    const fragment = document.createDocumentFragment();
-    for (let pageNum = 1; pageNum <= total; pageNum++) {
-        const container = document.createElement('div');
-        container.id = `page-container-${pageNum}`;
-        container.className = 'pdf-page-container mb-8 shadow-lg bg-white shrink-0 snap-center relative';
-        container.dataset.pageNum = String(pageNum);
-        container.style.width = `${placeholder.width}px`;
-        container.style.height = `${placeholder.height}px`;
-        fragment.appendChild(container);
-    }
-    scroller.appendChild(fragment);
+    topSpacer = document.createElement('div');
+    topSpacer.className = 'w-full shrink-0';
+    bottomSpacer = document.createElement('div');
+    bottomSpacer.className = 'w-full shrink-0';
+    spacerTopHeight = -1;
+    spacerBottomHeight = -1;
+    scroller.append(topSpacer, bottomSpacer);
 
     const old = scrollContainer;
     scrollContainer = scroller;
-    pageContainers = Array.from(scroller.children) as HTMLElement[];
+    pageContainers = new Array<HTMLElement>(total);
+    pageCount = total;
     if (old) {
         old.removeEventListener('scroll', onMainScroll);
         old.remove();
@@ -389,6 +649,10 @@ async function runRenderAllMainPages() {
 
     scroller.addEventListener('scroll', onMainScroll, { passive: true });
 
+    ensurePageGeometry();
+    mountAroundPage(restore?.page ?? lastKnownPage ?? 1);
+    samplePageLayout();
+    updateSpacers();
     restoreScrollPos(restore);
     scheduleMainWindowRender();
     updateScrollModeClasses(PdfState.isSnapMode);
@@ -417,22 +681,30 @@ function onMainScroll() {
 }
 
 function renderVisibleWindow() {
-    if (!scrollContainer || !PdfState.currentPdfDoc) return;
+    if (!scrollContainer || !PdfState.currentPdfDoc || pageCount === 0) return;
     savedScrollPos = captureScrollPos();
     syncPageCounter();
     syncActiveThumb();
-    syncActiveOutline();
-    syncOutlineBreadcrumb();
+    syncOutline(currentViewPosition());
+    const margins = mountMargins();
     const scrollTop = scrollContainer.scrollTop;
     const clientHeight = scrollContainer.clientHeight || 1;
-    const first = Math.max(1, pageAtOffset(scrollTop) - RENDER_BEHIND_PAGES);
-    const last = Math.min(pageContainers.length, pageAtOffset(scrollTop + clientHeight) + RENDER_AHEAD_PAGES);
+    const viewFirst = pageAtOffset(scrollTop);
+    const viewLast = pageAtOffset(scrollTop + clientHeight);
+    const first = Math.max(1, viewFirst - margins.behind);
+    const last = Math.min(pageCount, viewLast + margins.ahead);
 
-    evictOutside(first, last);
-    renderQueue = renderQueue.filter((p) => p >= first - EVICT_BEHIND_PAGES - 2 && p <= last + EVICT_AHEAD_PAGES + 2);
+    syncMountedPages(first, last);
+    renderQueue = renderQueue.filter((p) => p >= first && p <= last);
 
-    for (let pageNum = first; pageNum <= last; pageNum++) {
+    for (let pageNum = viewFirst; pageNum <= viewLast; pageNum++) {
         queuePageRender(pageNum);
+    }
+    for (let delta = 1; delta <= Math.max(margins.behind, margins.ahead); delta++) {
+        const before = viewFirst - delta;
+        const after = viewLast + delta;
+        if (before >= first) queuePageRender(before);
+        if (after <= last) queuePageRender(after);
     }
 }
 
@@ -452,35 +724,29 @@ function measureAllPages(version: number): Promise<void> {
         if (!PdfState.currentPdfDoc) return;
         measuring = true;
         try {
-            const total = PdfState.currentPdfDoc.numPages;
-            const pending: { pageNum: number; size: { width: number; height: number } }[] = [];
+            const doc = PdfState.currentPdfDoc;
+            const total = doc.numPages;
             for (let start = 1; start <= total; start += MEASURE_CHUNK) {
                 if (version !== viewerVersion) return;
                 const end = Math.min(start + MEASURE_CHUNK, total + 1);
-                const pages = await Promise.all(
-                    Array.from({ length: end - start }, (_, i) =>
-                        PdfState.currentPdfDoc.getPage(start + i).catch(() => null),
-                    ),
-                );
+                const targets: number[] = [];
+                for (let p = start; p < end; p++) {
+                    if (!pageSizePoints.has(p)) targets.push(p);
+                }
+                if (targets.length === 0) continue;
+                const pages = await Promise.all(targets.map((p) => doc.getPage(p).catch(() => null)));
+                if (version !== viewerVersion) return;
                 for (let i = 0; i < pages.length; i++) {
-                    if (version !== viewerVersion) return;
                     const page = pages[i];
-                    const pageNum = start + i;
-                    if (!page || pageSizes.has(pageNum)) continue;
-                    const viewport = page.getViewport({ scale: PdfState.currentScale });
-                    pending.push({ pageNum, size: { width: viewport.width, height: viewport.height } });
+                    if (!page) continue;
+                    const pageNum = targets[i];
+                    if (pageSizePoints.has(pageNum)) continue;
+                    const viewport = page.getViewport({ scale: 1 });
+                    recordPagePoints(pageNum, { width: viewport.width, height: viewport.height });
                 }
+                if (version !== viewerVersion) return;
+                scheduleThumbWindowRender();
             }
-            if (version !== viewerVersion) return;
-            for (const { pageNum, size } of pending) {
-                pageSizes.set(pageNum, size);
-                const container = pageContainers[pageNum - 1];
-                if (container) {
-                    container.style.width = `${size.width}px`;
-                    container.style.height = `${size.height}px`;
-                }
-            }
-            scheduleThumbWindowRender();
         } finally {
             measuring = false;
             const resolvers = measureWaiters;
@@ -500,26 +766,23 @@ function whenMeasurementDone(): Promise<void> {
 }
 
 async function measurePageNow(pageNum: number) {
-    if (!PdfState.currentPdfDoc || pageSizes.has(pageNum)) return;
+    if (!PdfState.currentPdfDoc || pageSizePoints.has(pageNum)) return;
     try {
         const page = await PdfState.currentPdfDoc.getPage(pageNum);
-        if (!page || pageSizes.has(pageNum)) return;
-        const viewport = page.getViewport({ scale: PdfState.currentScale });
-        pageSizes.set(pageNum, { width: viewport.width, height: viewport.height });
-        const container = pageContainers[pageNum - 1];
-        if (container && container.isConnected) {
-            container.style.width = `${viewport.width}px`;
-            container.style.height = `${viewport.height}px`;
-        }
+        if (!page) return;
+        if (pageSizePoints.has(pageNum)) return;
+        const viewport = page.getViewport({ scale: 1 });
+        recordPagePoints(pageNum, { width: viewport.width, height: viewport.height });
         scheduleThumbWindowRender();
     } catch {}
 }
 
 export function refreshSidebarSync(scrollToActive = false) {
     if (!PdfState.currentPdfDoc) return;
+    invalidateSidebarViewport();
+    invalidateOutlineLayout();
     syncActiveThumb();
-    syncActiveOutline();
-    syncOutlineBreadcrumb();
+    syncOutline(currentViewPosition());
     if (!previewsPaneVisible()) return;
     scheduleThumbWindowRender();
     if (scrollToActive && !followSuppressed && (PdfState.sidebarFollow || Date.now() < followOverrideUntil)) {
@@ -538,16 +801,17 @@ function queuePageRender(pageNum: number) {
 }
 
 function pumpRenderQueue() {
-    while (activeRenders < RENDER_CONCURRENCY && renderQueue.length > 0) {
+    while (renderQueue.length > 0) {
+        if (activeMainRenders + activeThumbRenders >= RENDER_CONCURRENCY) return;
         const pageNum = renderQueue.shift()!;
         if (!pendingRenders.has(pageNum)) continue;
         if (renderedCanvases.has(pageNum)) {
             pendingRenders.delete(pageNum);
             continue;
         }
-        activeRenders++;
+        activeMainRenders++;
         void renderPage(pageNum).finally(() => {
-            activeRenders = Math.max(0, activeRenders - 1);
+            activeMainRenders = Math.max(0, activeMainRenders - 1);
             pendingRenders.delete(pageNum);
             pumpRenderQueue();
             pumpThumbQueue();
@@ -562,12 +826,10 @@ async function renderPage(pageNum: number) {
     try {
         const page = await doc.getPage(pageNum);
         if (!container.isConnected || PdfState.currentPdfDoc !== doc) return;
+        pageHandles.set(pageNum, page);
         const viewport = page.getViewport({ scale: PdfState.currentScale });
-        if (!pageSizes.has(pageNum) && !measuring) {
-            pageSizes.set(pageNum, { width: viewport.width, height: viewport.height });
-            container.style.width = `${viewport.width}px`;
-            container.style.height = `${viewport.height}px`;
-        }
+        const scale = PdfState.currentScale || 1;
+        recordPagePoints(pageNum, { width: viewport.width / scale, height: viewport.height / scale });
 
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
@@ -597,6 +859,85 @@ async function renderPage(pageNum: number) {
     }
 }
 
+const LINK_PAD_X = 1;
+const LINK_PAD_Y = 0.5;
+
+interface LineBox {
+    left: number;
+    right: number;
+    top: number;
+    bottom: number;
+}
+
+function linkHotspotRects(rect: number[], quadPoints: any): number[][] {
+    const rects: number[][] = [];
+    if (quadPoints && quadPoints.length >= 8) {
+        for (let i = 2; i + 3 < quadPoints.length; i += 8) {
+            const trX = quadPoints[i];
+            const trY = quadPoints[i + 1];
+            const blX = quadPoints[i + 2];
+            const blY = quadPoints[i + 3];
+            rects.push([Math.min(blX, trX), Math.min(blY, trY), Math.max(blX, trX), Math.max(blY, trY)]);
+        }
+    }
+    if (rects.length === 0) rects.push(rect);
+    return rects;
+}
+
+function textLineBoxes(container: HTMLElement): LineBox[] {
+    const layer = container.querySelector('.text-layer');
+    if (!layer) return [];
+    const origin = container.getBoundingClientRect();
+    const lines: LineBox[] = [];
+    for (const span of layer.querySelectorAll<HTMLElement>('span')) {
+        if (span.classList.contains('markedContent') || !span.textContent) continue;
+        const rect = span.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) continue;
+        const box = {
+            left: rect.left - origin.left,
+            right: rect.right - origin.left,
+            top: rect.top - origin.top,
+            bottom: rect.bottom - origin.top,
+        };
+        const line = lines.find((l) => box.top < l.bottom - 1 && box.bottom > l.top + 1);
+        if (line) {
+            line.left = Math.min(line.left, box.left);
+            line.right = Math.max(line.right, box.right);
+            line.top = Math.min(line.top, box.top);
+            line.bottom = Math.max(line.bottom, box.bottom);
+        } else {
+            lines.push({ ...box });
+        }
+    }
+    return lines;
+}
+
+function clipHotspotToText(box: number[], lines: LineBox[], out: number[][]) {
+    if (lines.length === 0) {
+        out.push(box);
+        return;
+    }
+    const [x, y, width, height] = box;
+    const right = x + width;
+    const bottom = y + height;
+    let covered = false;
+    for (const line of lines) {
+        const left = Math.max(x, line.left);
+        const lineRight = Math.min(right, line.right);
+        const top = Math.max(y, line.top);
+        const lineBottom = Math.min(bottom, line.bottom);
+        if (lineRight - left < 1 || lineBottom - top < 1) continue;
+        covered = true;
+        out.push([
+            left - LINK_PAD_X,
+            top - LINK_PAD_Y,
+            lineRight - left + LINK_PAD_X * 2,
+            lineBottom - top + LINK_PAD_Y * 2,
+        ]);
+    }
+    if (!covered) out.push(box);
+}
+
 async function addPageLinkLayer(page: any, container: HTMLElement, viewport: any) {
     try {
         const annotations = await page.getAnnotations();
@@ -605,35 +946,49 @@ async function addPageLinkLayer(page: any, container: HTMLElement, viewport: any
         container.querySelectorAll('.pdf-link-layer').forEach((l) => l.remove());
         const layer = document.createElement('div');
         layer.className = 'pdf-link-layer';
+        const lines = textLineBoxes(container);
         for (const ann of links) {
             if (!ann.rect || ann.rect.length !== 4) continue;
-            const [x1, y1, x2, y2] = viewport.convertToViewportRectangle(ann.rect);
-            const el = document.createElement('a');
-            el.className = 'pdf-link';
-            el.style.left = `${Math.min(x1, x2)}px`;
-            el.style.top = `${Math.min(y1, y2)}px`;
-            el.style.width = `${Math.abs(x2 - x1)}px`;
-            el.style.height = `${Math.abs(y2 - y1)}px`;
-            if (ann.url) {
-                el.href = ann.url;
-                el.target = '_blank';
-                el.rel = 'noopener';
-                el.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    void window.electronAPI.openExternal(ann.url);
-                });
-            } else if (ann.dest) {
-                el.href = '#';
-                el.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    void resolveOutlineDest(ann.dest).then((t) => {
-                        if (t) jumpToPage(t.page, t.y);
-                    });
-                });
+            const href = typeof ann.url === 'string' && ann.url.length > 0 ? ann.url : null;
+            const dest = href ? null : ann.dest;
+            if (!href && !dest) continue;
+            const boxes: number[][] = [];
+            for (const rect of linkHotspotRects(ann.rect, ann.quadPoints)) {
+                const [x1, y1, x2, y2] = viewport.convertToViewportRectangle(rect);
+                const width = Math.abs(x2 - x1);
+                const height = Math.abs(y2 - y1);
+                if (width < 0.5 || height < 0.5) continue;
+                clipHotspotToText([Math.min(x1, x2), Math.min(y1, y2), width, height], lines, boxes);
             }
-            layer.appendChild(el);
+            for (const [x, y, width, height] of boxes) {
+                const el = document.createElement('a');
+                el.className = 'pdf-link';
+                el.style.left = `${x}px`;
+                el.style.top = `${y}px`;
+                el.style.width = `${width}px`;
+                el.style.height = `${height}px`;
+                if (href) {
+                    el.href = href;
+                    el.target = '_blank';
+                    el.rel = 'noopener';
+                    el.title = href;
+                    el.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        void window.electronAPI.openExternal(href);
+                    });
+                } else {
+                    el.href = '#';
+                    el.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        void resolveOutlineDest(dest).then((t) => {
+                            if (t) jumpToPage(t.page, t.y);
+                        });
+                    });
+                }
+                layer.appendChild(el);
+            }
         }
-        container.appendChild(layer);
+        if (layer.childElementCount > 0) container.appendChild(layer);
     } catch {}
 }
 
@@ -650,6 +1005,7 @@ function suspendSnap() {
         window.removeEventListener('keydown', resume, { capture: true });
         if (!scrollContainer || !PdfState.isSnapMode) return;
         scrollContainer.classList.add('snap-y', 'snap-mandatory');
+        applySnapClassesToMounted();
     };
     window.addEventListener('wheel', resume, { capture: true, passive: true });
     window.addEventListener('keydown', resume, { capture: true });
@@ -657,13 +1013,16 @@ function suspendSnap() {
 
 export function jumpToPage(pageNum: number, yCss: number | null = null, center = false) {
     followOverrideUntil = Date.now() + 600;
+    if (pageCount === 0 || !PdfState.currentPdfDoc) return;
+    pageNum = Math.max(1, Math.min(pageCount, Math.round(pageNum)));
+    mountAroundPage(pageNum);
+    scheduleMainWindowRender();
     const jump = () => {
         const target = document.getElementById(`page-container-${pageNum}`);
         if (!target || !scrollContainer) return;
-        const y = yCss == null ? 0 : Math.max(0, Math.min(yCss, target.offsetHeight - 1));
-        const top = center
-            ? Math.max(0, target.offsetTop + y - scrollContainer.clientHeight / 2)
-            : target.offsetTop + y;
+        const y = yCss == null ? 0 : Math.max(0, Math.min(yCss, pageHeight(pageNum) - 1));
+        const base = pageTop(pageNum);
+        const top = center ? Math.max(0, base + y - scrollContainer.clientHeight / 2) : base + y;
         if (y > 0) suspendSnap();
         const dist = Math.abs(top - scrollContainer.scrollTop);
         if (dist > (scrollContainer.clientHeight || 1) * 1.5) {
@@ -674,11 +1033,8 @@ export function jumpToPage(pageNum: number, yCss: number | null = null, center =
             scrollContainer.scrollTo({ top, behavior: 'smooth' });
         }
     };
-    if (pageSizes.has(pageNum)) {
-        jump();
-        return;
-    }
     jump();
+    if (pageSizePoints.has(pageNum)) return;
     void Promise.all([measurePageNow(pageNum), whenMeasurementDone()]).then(() => {
         if (!PdfState.currentPdfDoc || Math.abs(currentPageAtViewport() - pageNum) > 3) return;
         jump();
@@ -716,9 +1072,8 @@ async function withOutlinePosition(pageNum: number, dest: any[]): Promise<{ page
     else if ((mode === 'FitH' || mode === 'FitBH') && typeof dest[2] === 'number') top = dest[2];
     if (top === null) return { page, y: null };
     let pageHeightPts: number;
-    const cached = pageSizes.get(page);
-    if (cached) {
-        pageHeightPts = cached.height / PdfState.currentScale;
+    if (pageSizePoints.has(page)) {
+        pageHeightPts = pagePointSize(page).height;
     } else {
         const p = await doc.getPage(page);
         pageHeightPts = p.view[3] - p.view[1];
@@ -732,19 +1087,27 @@ const outlineDests = new Map<HTMLElement, any>();
 const outlinePositions = new Map<HTMLElement, { page: number; y: number }>();
 const outlineParentRow = new Map<HTMLElement, HTMLElement | null>();
 let activeOutlineRow: HTMLElement | null = null;
+let outlineRows: HTMLElement[] = [];
+let lastBreadcrumbRow: HTMLElement | null = null;
+let lastBreadcrumbName: string | null | undefined;
 let outlineFollowSmooth = false;
 let outlineFollowTimer: ReturnType<typeof setTimeout> | null = null;
+let outlineLayoutValid = false;
+let sidebarViewportValid = false;
+let outlineRowBoxes = new Map<HTMLElement, { top: number; height: number }>();
+let sidebarScrollTop = 0;
+let sidebarViewportHeight = 0;
+let outlinePaneTop = 0;
+let sidebarObserversInstalled = false;
 
 function currentViewPosition(): { page: number; y: number } {
     const page = currentPageAtViewport();
-    const container = pageContainers[page - 1];
-    if (!scrollContainer || !container) return { page, y: 0 };
+    if (!scrollContainer || pageCount === 0) return { page, y: 0 };
     const mid = scrollContainer.scrollTop + (scrollContainer.clientHeight || 1) / 2;
-    return { page, y: Math.max(0, mid - container.offsetTop) };
+    return { page, y: Math.max(0, mid - pageTop(page)) };
 }
 
-function bestOutlineRow(rows: HTMLElement[]): HTMLElement | null {
-    const pos = currentViewPosition();
+function bestOutlineRow(rows: HTMLElement[], pos: { page: number; y: number }): HTMLElement | null {
     const posY = pos.y / PdfState.currentScale;
     let best: HTMLElement | null = null;
     let bestPage = 0;
@@ -771,28 +1134,64 @@ function sectionsPaneVisible(): boolean {
     );
 }
 
-function sectionsPaneOffsetInSidebar(): number {
+function invalidateOutlineLayout() {
+    outlineLayoutValid = false;
+    outlineRowBoxes.clear();
+}
+
+function invalidateSidebarViewport() {
+    sidebarViewportValid = false;
+}
+
+function installSidebarObservers() {
+    if (sidebarObserversInstalled || typeof ResizeObserver === 'undefined') return;
+    const sidebar = document.getElementById('sidebar');
+    if (!sidebar) return;
+    sidebarObserversInstalled = true;
+    new ResizeObserver(() => invalidateSidebarViewport()).observe(sidebar);
+    if (DOM.sidebarSections) new ResizeObserver(() => invalidateOutlineLayout()).observe(DOM.sidebarSections);
+}
+
+function ensureSidebarMetrics() {
+    if (sidebarViewportValid) return;
+    const sidebar = document.getElementById('sidebar');
+    if (!sidebar) return;
+    sidebarViewportValid = true;
+    sidebarScrollTop = sidebar.scrollTop;
+    sidebarViewportHeight = sidebar.clientHeight;
+}
+
+function ensureOutlineLayout() {
+    if (outlineLayoutValid) return;
+    outlineLayoutValid = true;
+    outlineRowBoxes.clear();
     const sidebar = document.getElementById('sidebar');
     const pane = DOM.sidebarSections;
-    if (!sidebar || !pane) return 0;
-    return pane.getBoundingClientRect().top - sidebar.getBoundingClientRect().top + sidebar.scrollTop;
+    if (!sidebar || !pane || !sectionsPaneVisible() || outlineRows.length === 0) return;
+    const paneTop = pane.getBoundingClientRect().top;
+    outlinePaneTop = paneTop - sidebar.getBoundingClientRect().top + sidebarScrollTop;
+    for (const row of outlineRows) {
+        const rect = row.getBoundingClientRect();
+        outlineRowBoxes.set(row, { top: rect.top - paneTop, height: rect.height });
+    }
 }
 
 function scrollOutlineRowIntoView(row: HTMLElement) {
     const sidebar = document.getElementById('sidebar');
     if (!sidebar || !sectionsPaneVisible()) return;
-    const paneTop = sectionsPaneOffsetInSidebar();
-    const viewTop = sidebar.scrollTop - paneTop;
-    const viewBottom = viewTop + sidebar.clientHeight;
-    const rowTop = row.getBoundingClientRect().top - DOM.sidebarSections.getBoundingClientRect().top;
-    const rowBottom = rowTop + row.offsetHeight;
-    if (rowTop >= viewTop && rowBottom <= viewBottom) {
+    ensureSidebarMetrics();
+    ensureOutlineLayout();
+    const box = outlineRowBoxes.get(row);
+    if (!box || box.height <= 0) return;
+    const viewTop = sidebarScrollTop - outlinePaneTop;
+    const viewBottom = viewTop + sidebarViewportHeight;
+    if (box.top >= viewTop && box.top + box.height <= viewBottom) {
         outlineFollowSmooth = false;
         return;
     }
-    const target = Math.max(0, rowTop - (sidebar.clientHeight - row.offsetHeight) / 2 + paneTop);
-    const dist = Math.abs(sidebar.scrollTop - target);
-    if (dist <= sidebar.clientHeight && !outlineFollowSmooth) {
+    const target = Math.max(0, box.top - (sidebarViewportHeight - box.height) / 2 + outlinePaneTop);
+    const dist = Math.abs(sidebarScrollTop - target);
+    if (dist <= sidebarViewportHeight && !outlineFollowSmooth) {
         outlineFollowSmooth = true;
         sidebar.scrollTo({ top: target, behavior: 'smooth' });
         if (outlineFollowTimer) clearTimeout(outlineFollowTimer);
@@ -806,34 +1205,41 @@ function scrollOutlineRowIntoView(row: HTMLElement) {
         sidebar.style.scrollBehavior = 'auto';
         sidebar.scrollTop = target;
         sidebar.style.removeProperty('scroll-behavior');
+        sidebarScrollTop = target;
         outlineFollowSmooth = false;
     }
 }
 
-function syncActiveOutline() {
+function syncOutline(pos: { page: number; y: number } | null = null) {
     if (!scrollContainer || !DOM.sidebarSections) return;
-    if (DOM.sidebarSections.classList.contains('hidden')) return;
-    const rows = Array.from(DOM.sidebarSections.querySelectorAll<HTMLElement>('.outline-item'));
-    if (rows.length === 0) return;
-    const best = bestOutlineRow(rows);
-    if (best !== activeOutlineRow) {
+    if (outlineRows.length === 0) {
+        syncOutlineBreadcrumb(null);
+        return;
+    }
+    const best = bestOutlineRow(outlineRows, pos ?? currentViewPosition());
+    const visible = sectionsPaneVisible();
+    if (visible && best !== activeOutlineRow) {
         if (activeOutlineRow) activeOutlineRow.classList.remove('outline-active');
         activeOutlineRow = best;
         if (best) {
             best.classList.add('outline-active');
             let node = best.parentElement;
+            let expanded = false;
             while (node && node !== DOM.sidebarSections) {
                 if (node.classList.contains('outline-children') && node.classList.contains('hidden')) {
                     node.classList.remove('hidden');
                     node.previousElementSibling?.classList.remove('outline-collapsed');
+                    expanded = true;
                 }
                 node = node.parentElement;
             }
+            if (expanded) invalidateOutlineLayout();
         }
     }
-    if (best && !followSuppressed && (PdfState.sidebarFollow || Date.now() < followOverrideUntil)) {
+    if (best && visible && !followSuppressed && (PdfState.sidebarFollow || Date.now() < followOverrideUntil)) {
         scrollOutlineRowIntoView(best);
     }
+    syncOutlineBreadcrumb(best);
 }
 
 export function setCurrentFileName(name: string | null) {
@@ -859,24 +1265,24 @@ export function setBreadcrumbPath(path: string | null) {
     el.classList.remove('hidden');
 }
 
-function syncOutlineBreadcrumb() {
+function syncOutlineBreadcrumb(row?: HTMLElement | null) {
+    const best = row !== undefined ? row : activeOutlineRow;
+    if (best === lastBreadcrumbRow && currentFileName === lastBreadcrumbName) return;
+    lastBreadcrumbRow = best;
+    lastBreadcrumbName = currentFileName;
     if (!currentFileName) {
         setBreadcrumbPath(null);
         return;
     }
     let path = currentFileName;
-    if (scrollContainer && PdfState.currentPdfDoc) {
-        const rows = Array.from(DOM.sidebarSections.querySelectorAll<HTMLElement>('.outline-item'));
-        const best = bestOutlineRow(rows);
-        if (best) {
-            const parts: string[] = [];
-            let cur: HTMLElement | null = best;
-            while (cur) {
-                parts.unshift(cur.querySelector('.outline-label')?.textContent || '(untitled)');
-                cur = outlineParentRow.get(cur) ?? null;
-            }
-            path = `${currentFileName} ▸ ${parts.join(' ▸ ')}`;
+    if (best) {
+        const parts: string[] = [];
+        let cur: HTMLElement | null = best;
+        while (cur) {
+            parts.unshift(cur.querySelector('.outline-label')?.textContent || '(untitled)');
+            cur = outlineParentRow.get(cur) ?? null;
         }
+        path = `${currentFileName} ▸ ${parts.join(' ▸ ')}`;
     }
     setBreadcrumbPath(path);
 }
@@ -897,8 +1303,14 @@ async function linkOutlinePages() {
 
 export async function renderOutline() {
     if (!PdfState.currentPdfDoc || !DOM.sidebarSections) return;
+    installSidebarObservers();
     DOM.sidebarSections.innerHTML = '';
+    invalidateSidebarViewport();
+    invalidateOutlineLayout();
     activeOutlineRow = null;
+    outlineRows = [];
+    lastBreadcrumbRow = null;
+    lastBreadcrumbName = undefined;
     outlineDests.clear();
     outlinePositions.clear();
     outlineParentRow.clear();
@@ -919,9 +1331,9 @@ export async function renderOutline() {
     const fragment = document.createDocumentFragment();
     for (const item of outline) fragment.appendChild(buildOutlineItem(item, 0, null));
     DOM.sidebarSections.appendChild(fragment);
+    outlineRows = Array.from(DOM.sidebarSections.querySelectorAll<HTMLElement>('.outline-item'));
     await linkOutlinePages();
-    syncActiveOutline();
-    syncOutlineBreadcrumb();
+    syncOutline();
 }
 
 function buildOutlineItem(item: any, depth: number, parentRow: HTMLElement | null): HTMLElement {
@@ -958,6 +1370,7 @@ function buildOutlineItem(item: any, depth: number, parentRow: HTMLElement | nul
             e.stopPropagation();
             wrapper.classList.toggle('hidden');
             row.classList.toggle('outline-collapsed');
+            invalidateOutlineLayout();
         });
     }
 
@@ -973,40 +1386,22 @@ function buildOutlineItem(item: any, depth: number, parentRow: HTMLElement | nul
     return node;
 }
 
-function evictOutside(first: number, last: number) {
-    for (const [pageNum, canvas] of renderedCanvases) {
-        if (pageNum < first - EVICT_BEHIND_PAGES || pageNum > last + EVICT_AHEAD_PAGES) {
-            canvas.remove();
-            const container = pageContainers[pageNum - 1];
-            container?.querySelector('.text-layer')?.remove();
-            container?.querySelector('.pdf-link-layer')?.remove();
-            clearPageSpans(pageNum);
-            renderedCanvases.delete(pageNum);
-        }
-    }
-    for (const [pageNum, entry] of pendingRenders) {
-        if (pageNum < first - EVICT_BEHIND_PAGES - 2 || pageNum > last + EVICT_AHEAD_PAGES + 2) {
-            try {
-                entry.task?.cancel();
-            } catch {}
-            entry.canvas?.remove();
-            pendingRenders.delete(pageNum);
-        }
-    }
-}
-
 function thumbHeightFor(pageNum: number, width = getSidebarTargetWidth()): number {
-    const size = pageSizes.get(pageNum);
-    const aspect = thumbAspects.get(pageNum) ?? (size ? size.height / size.width : 792 / 612);
+    const points = pagePointSize(pageNum);
+    const aspect = thumbAspects.get(pageNum) ?? points.height / points.width;
     return Math.round(Math.max(120, width - THUMB_INSET * 2) * aspect);
 }
 
 let thumbLayoutWidth = 280;
+let thumbLayoutDirty = true;
 
-function rebuildThumbLayout() {
+function rebuildThumbLayout(force = false) {
     if (!PdfState.currentPdfDoc || !DOM.sidebarPreviews) return;
     const total = PdfState.currentPdfDoc.numPages;
-    thumbLayoutWidth = getSidebarTargetWidth();
+    const width = getSidebarTargetWidth();
+    if (!force && !thumbLayoutDirty && thumbTops.length === total && width === thumbLayoutWidth) return;
+    thumbLayoutDirty = false;
+    thumbLayoutWidth = width;
     const tops = new Array<number>(total);
     let y = THUMB_INSET;
     for (let i = 0; i < total; i++) {
@@ -1076,6 +1471,7 @@ export async function renderThumbnails() {
     thumbCanvases.clear();
     cancelThumbRenders();
     thumbElements = [];
+    thumbLayoutDirty = true;
 
     const sidebar = document.getElementById('sidebar');
     if (!sidebar) return;
@@ -1119,6 +1515,8 @@ function thumbIndexAt(y: number): number {
 }
 
 function onThumbScroll() {
+    const sidebar = document.getElementById('sidebar');
+    if (sidebar) sidebarScrollTop = sidebar.scrollTop;
     if (thumbScrollRafPending) return;
     thumbScrollRafPending = true;
     requestAnimationFrame(() => {
@@ -1154,9 +1552,8 @@ function renderVisibleThumbs() {
 
     for (let i = first; i <= last; i++) ensureThumbMounted(i + 1);
     evictThumbs(first, last);
-    thumbQueue = thumbQueue.filter(
-        (p) => p - 1 >= first - THUMB_EVICT_RADIUS - 5 && p - 1 <= last + THUMB_EVICT_RADIUS + 5,
-    );
+    const radius = thumbEvictRadius();
+    thumbQueue = thumbQueue.filter((p) => p - 1 >= first - radius - 5 && p - 1 <= last + radius + 5);
 
     for (let pageNum = first + 1; pageNum <= last + 1; pageNum++) {
         queueThumbRender(pageNum);
@@ -1172,16 +1569,20 @@ function queueThumbRender(pageNum: number) {
 }
 
 function pumpThumbQueue() {
-    while (activeRenders < RENDER_CONCURRENCY && thumbQueue.length > 0) {
+    while (thumbQueue.length > 0) {
+        const mainBusy = renderQueue.length > 0 || pendingRenders.size > 0;
+        const free = RENDER_CONCURRENCY - activeMainRenders - activeThumbRenders;
+        const limit = mainBusy ? 1 : RENDER_CONCURRENCY;
+        if (free <= 0 || activeThumbRenders >= limit) return;
         const pageNum = thumbQueue.shift()!;
         if (!thumbPending.has(pageNum)) continue;
         if (thumbCanvases.has(pageNum)) {
             thumbPending.delete(pageNum);
             continue;
         }
-        activeRenders++;
+        activeThumbRenders++;
         void renderThumb(pageNum).finally(() => {
-            activeRenders = Math.max(0, activeRenders - 1);
+            activeThumbRenders = Math.max(0, activeThumbRenders - 1);
             thumbPending.delete(pageNum);
             pumpRenderQueue();
             pumpThumbQueue();
@@ -1203,7 +1604,11 @@ async function renderThumb(pageNum: number) {
         thumb.width = Math.max(1, Math.floor(viewport.width));
         thumb.height = Math.max(1, Math.floor(viewport.height));
         const cssHeight = Math.max(1, Math.floor(viewport.height / getOutputScale()));
-        thumbAspects.set(pageNum, baseViewport.height / baseViewport.width);
+        const aspect = baseViewport.height / baseViewport.width;
+        if (thumbAspects.get(pageNum) !== aspect) {
+            thumbAspects.set(pageNum, aspect);
+            thumbLayoutDirty = true;
+        }
         if (thumb.style.height !== `${cssHeight}px`) {
             thumb.style.height = `${cssHeight}px`;
             scheduleThumbWindowRender();
@@ -1225,16 +1630,18 @@ async function renderThumb(pageNum: number) {
 }
 
 function evictThumbs(first: number, last: number) {
+    const radius = thumbEvictRadius();
     for (let i = thumbElements.length - 1; i >= 0; i--) {
         const canvas = thumbElements[i];
         const pageNum = parseInt(canvas.dataset.pageNum || '0', 10);
-        if (pageNum - 1 >= first - THUMB_EVICT_RADIUS && pageNum - 1 <= last + THUMB_EVICT_RADIUS) continue;
+        if (pageNum - 1 >= first - radius && pageNum - 1 <= last + radius) continue;
         canvas.remove();
         thumbElements.splice(i, 1);
         thumbCanvases.delete(pageNum);
+        releasePage(pageNum);
     }
     for (const [pageNum, entry] of thumbPending) {
-        if (pageNum - 1 < first - THUMB_EVICT_RADIUS - 5 || pageNum - 1 > last + THUMB_EVICT_RADIUS + 5) {
+        if (pageNum - 1 < first - radius - 5 || pageNum - 1 > last + radius + 5) {
             try {
                 entry.task?.cancel();
             } catch {}

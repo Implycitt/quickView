@@ -6,6 +6,12 @@ const WORKER_URL = `${CDN_BASE}/pdf.worker.min.mjs`;
 
 let loading: Promise<any> | null = null;
 
+export function prefetchPdfjs(): void {
+    void loadPdfjs()
+        .then(() => fetch(WORKER_URL, { cache: 'force-cache' }))
+        .catch(() => {});
+}
+
 export function loadPdfjs(): Promise<any> {
     if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
     if (!loading) {

@@ -5,7 +5,7 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <meta
             http-equiv="Content-Security-Policy"
-            content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: file: https: http:; frame-src blob:;"
+            content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com blob:; connect-src 'self' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: file: https: http:; frame-src blob:;"
         />
         <title>QuickView</title>
         <script type="module" src="../index.ts"></script>
@@ -13,6 +13,64 @@
     <body
         class="bg-gray-900 text-gray-100 font-sans h-screen overflow-hidden flex flex-col selection:bg-lavender-500 selection:text-white"
     >
+        <div id="titlebar">
+            <div class="titlebar-drag">
+                <img class="titlebar-icon" src="../../assets/icons/icon.png" alt="" draggable="false" />
+                <span id="titlebar-document" class="titlebar-title">QuickView</span>
+            </div>
+            <div class="titlebar-controls">
+                <button id="window-minimize" type="button" class="titlebar-btn" title="Minimize" aria-label="Minimize">
+                    <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 10 10"
+                        shape-rendering="crispEdges"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1"
+                    >
+                        <path d="M0 5.5h10" />
+                    </svg>
+                </button>
+                <button id="window-maximize" type="button" class="titlebar-btn" title="Maximize" aria-label="Maximize">
+                    <svg
+                        class="titlebar-icon-maximize"
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 10 10"
+                        shape-rendering="crispEdges"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1"
+                    >
+                        <rect x="0.5" y="0.5" width="9" height="9" />
+                    </svg>
+                    <svg
+                        class="titlebar-icon-restore"
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 10 10"
+                        shape-rendering="crispEdges"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1"
+                    >
+                        <path d="M2.5 0.5h7v7" />
+                        <rect x="0.5" y="2.5" width="7" height="7" />
+                    </svg>
+                </button>
+                <button id="window-close" type="button" class="titlebar-btn" title="Close" aria-label="Close">
+                    <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 10 10"
+                        shape-rendering="crispEdges"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1"
+                    >
+                        <path d="M0.5 0.5l9 9M9.5 0.5l-9 9" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+
         <header class="bg-gray-800 border-b border-gray-700 px-4 py-3 flex justify-between items-center shadow-md z-10">
             <div class="flex items-center gap-3 min-w-0">
                 <button
@@ -180,7 +238,7 @@
             </div>
         </header>
 
-        <div class="flex h-screen w-screen overflow-hidden gap-3">
+        <div id="app-shell" class="flex w-screen overflow-hidden gap-3">
             <aside
                 id="sidebar"
                 class="transition-[width] duration-300 h-full bg-gray-800 shrink-0 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] scrollbar-none"
@@ -324,12 +382,12 @@
                         <kbd class="bg-gray-900 border border-gray-600 px-2 py-1 rounded font-mono">G</kbd>
                     </li>
                     <li class="flex justify-between items-center">
-                        <span>Scroll Up</span>
-                        <kbd class="bg-gray-900 border border-gray-600 px-2 py-1 rounded font-mono">J</kbd>
+                        <span>Scroll Down</span>
+                        <kbd class="bg-gray-900 border border-gray-600 px-2 py-1 rounded font-mono">J / &darr;</kbd>
                     </li>
                     <li class="flex justify-between items-center">
-                        <span>Scroll Down</span>
-                        <kbd class="bg-gray-900 border border-gray-600 px-2 py-1 rounded font-mono">K</kbd>
+                        <span>Scroll Up</span>
+                        <kbd class="bg-gray-900 border border-gray-600 px-2 py-1 rounded font-mono">K / &uarr;</kbd>
                     </li>
                     <li class="flex justify-between items-center">
                         <span>Show Keybinds</span>

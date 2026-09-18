@@ -1,7 +1,6 @@
 import { DOM, toggleSidebar } from '../ui.js';
 import type { FileResponse } from '../types/types.d.ts';
 
-import { renderMarkdownWithCallouts, initMdBreadcrumb, attachMarkdownLinks } from './mdRenderer.js';
 import {
     PdfState,
     renderAllMainPages,
@@ -56,11 +55,22 @@ function attachImageFallbacks(root: HTMLElement) {
     });
 }
 
+let openToken = 0;
+let activeLoad: any = null;
+let displayedName: string | null = null;
+
 export async function renderFileContent(content: FileResponse) {
+    const token = ++openToken;
+    const stale = () => token !== openToken;
     const fileName = content.name.toLowerCase();
+    const reopening = content.name === displayedName;
 
     if (fileName.endsWith('.md')) {
-        resetPdfState();
+        const scrollTop = DOM.mainContentNode.scrollTop;
+        const { renderMarkdownWithCallouts, initMdBreadcrumb, attachMarkdownLinks } = await import('./mdRenderer.js');
+        if (stale()) return;
+        resetPdfState(reopening);
+        displayedName = content.name;
         if (DOM.pdfTools) DOM.pdfTools.classList.add('hidden');
 
         const htmlContent = renderMarkdownWithCallouts(content.content || '', content.path || '');
@@ -86,30 +96,61 @@ export async function renderFileContent(content: FileResponse) {
         if (article) attachMarkdownLinks(article as HTMLElement);
         initMdBreadcrumb(content.name, DOM.mainContentNode);
         indexMarkdown(DOM.mainContentNode);
+        DOM.mainContentNode.scrollTop = reopening ? scrollTop : 0;
     } else if (fileName.endsWith('.pdf')) {
-        resetPdfState();
+        const superseded = activeLoad;
+        resetPdfState(reopening);
         if (DOM.pdfTools) DOM.pdfTools.classList.remove('hidden');
         if (DOM.sidebarTabs) DOM.sidebarTabs.classList.remove('hidden');
         toggleSidebar('open');
 
         let loadingTask: any = null;
+        let openedDoc: any = null;
+        const abandonIfStale = () => {
+            if (!stale()) return false;
+            const doc = openedDoc;
+            openedDoc = null;
+            if (doc) {
+                if (PdfState.currentPdfDoc === doc) PdfState.currentPdfDoc = null;
+                void doc.destroy().catch(() => {});
+            }
+            return true;
+        };
         try {
             const uint8Array = new Uint8Array(content.data);
             const pdfjsLib = await loadPdfjs();
+            if (stale()) return;
             loadingTask = pdfjsLib.getDocument({ data: uint8Array });
-            PdfState.currentPdfDoc = await loadingTask.promise;
+            activeLoad = loadingTask;
+            if (superseded) void superseded.destroy().catch(() => {});
+            const doc = await loadingTask.promise;
+            if (stale()) {
+                void loadingTask.destroy().catch(() => {});
+                return;
+            }
+            PdfState.currentPdfDoc = doc;
+            openedDoc = doc;
+            activeLoad = null;
+            loadingTask = null;
+            displayedName = content.name;
             setCurrentFileName(content.name);
 
             PdfState.zoomMode = 'auto';
 
             await renderAllMainPages();
+            if (abandonIfStale()) return;
             await renderThumbnails();
+            if (abandonIfStale()) return;
             await renderOutline();
+            if (abandonIfStale()) return;
+            openedDoc = null;
             startBackgroundIndex();
         } catch (error) {
+            if (activeLoad === loadingTask) activeLoad = null;
+            if (loadingTask) void loadingTask.destroy().catch(() => {});
+            if (abandonIfStale()) return;
             console.error('Error rendering PDF:', error);
             resetPdfState();
-            if (loadingTask) void loadingTask.destroy().catch(() => {});
             DOM.mainContentNode.innerHTML = `<div class="p-8 text-red-500 flex justify-center">Failed to load PDF document.</div>`;
         }
     }

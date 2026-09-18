@@ -1,4 +1,4 @@
-import { PdfState, jumpToPage } from './pdfRenderer.js';
+import { PdfState, jumpToPage, isViewerBusy } from './pdfRenderer.js';
 import { DOM, toggleSidebar } from '../ui.js';
 import { loadPdfjs } from '../pdfjs.js';
 
@@ -33,7 +33,10 @@ let pendingScroll: { page: number; start: number; end: number } | null = null;
 
 const MAX_RESULTS = 40;
 const SCAN_CHUNK = 60;
-const INDEX_BATCH = 8;
+const INDEX_BATCH = 4;
+const SCAN_BUSY_DELAY = 120;
+const INDEX_IDLE_TIMEOUT = 400;
+const INDEX_BUSY_RETRY = 120;
 const MD_BLOCK_SELECTOR = 'h1, h2, h3, h4, h5, h6, p, li, pre, blockquote, td, th, dt, dd';
 
 interface MdBlock {
@@ -147,17 +150,30 @@ export function startBackgroundIndex() {
     const version = indexVersion;
     const total = doc.numPages;
     let page = 1;
+    const schedule = (fn: () => void, delay: number) => {
+        if (delay > 0) {
+            setTimeout(fn, delay);
+        } else if (typeof requestIdleCallback === 'function') {
+            requestIdleCallback(() => fn(), { timeout: INDEX_IDLE_TIMEOUT });
+        } else {
+            setTimeout(fn, 0);
+        }
+    };
     const tick = () => {
         if (indexVersion !== version || PdfState.currentPdfDoc !== doc || page > total) return;
+        if (isViewerBusy()) {
+            schedule(tick, INDEX_BUSY_RETRY);
+            return;
+        }
         const end = Math.min(page + INDEX_BATCH, total + 1);
         for (let p = page; p < end; p++) {
             if (pageIndexes.has(p)) continue;
             void ensureIndexed(p);
         }
         page = end;
-        setTimeout(tick, 0);
+        schedule(tick, 0);
     };
-    setTimeout(tick, 0);
+    schedule(tick, 0);
 }
 
 export async function renderPageTextLayer(
@@ -372,6 +388,10 @@ async function scanMarkdown(tokens: string[], version: number) {
     applyAllHighlights();
 }
 
+function yieldToPageRenders(): Promise<void> {
+    return new Promise((r) => setTimeout(r, isViewerBusy() ? SCAN_BUSY_DELAY : 0));
+}
+
 async function scanPages(tokens: string[], version: number) {
     const doc = PdfState.currentPdfDoc;
     if (!doc) return;
@@ -415,7 +435,7 @@ async function scanPages(tokens: string[], version: number) {
                 renderResults(results, checked, total);
                 applyAllHighlights();
             }
-            await new Promise((r) => setTimeout(r, 0));
+            await yieldToPageRenders();
         }
     }
     if (version !== searchVersion) return;

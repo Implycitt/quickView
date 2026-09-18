@@ -90,13 +90,13 @@ export function initKeybinds() {
         }
 
         // scroll down
-        if (keyPressed === 'j') {
+        if (keyPressed === 'j' || keyPressed === 'arrowdown') {
             e.preventDefault();
             performScroll(1);
         }
 
         // scroll up
-        if (keyPressed === 'k') {
+        if (keyPressed === 'k' || keyPressed === 'arrowup') {
             e.preventDefault();
             performScroll(-1);
         }

@@ -22,12 +22,15 @@ import {
 import { renderFileContent } from './rendering/fileHandler.js';
 import { initSearch } from './rendering/pdfSearch.js';
 import { initKeybinds } from './ui/keybinds.js';
+import { initWindowChrome } from './ui/windowChrome.js';
+import { prefetchPdfjs } from './pdfjs.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     initDOM();
     initSidebarResizer();
     initKeybinds();
     initSearch();
+    initWindowChrome();
 
     if (DOM.closeKeybindsBtn) DOM.closeKeybindsBtn.addEventListener('click', () => toggleKeybindsModal());
     if (DOM.keybindsToggleBtn) DOM.keybindsToggleBtn.addEventListener('click', () => toggleKeybindsModal());
@@ -189,6 +192,13 @@ document.addEventListener('DOMContentLoaded', () => {
             refreshSidebarSync();
         });
     });
+
+    const warmPdfjs = () => prefetchPdfjs();
+    if (typeof requestIdleCallback === 'function') {
+        requestIdleCallback(warmPdfjs, { timeout: 3000 });
+    } else {
+        setTimeout(warmPdfjs, 1200);
+    }
 
     let sidebarDragTimer: ReturnType<typeof setTimeout> | null = null;
     window.addEventListener('qv:sidebar-resized', () => {

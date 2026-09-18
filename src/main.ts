@@ -9,6 +9,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 let activeWatchedPath: string | null = null;
+const useCustomTitleBar = process.platform === 'linux';
 
 const isPackaged = app.isPackaged;
 const args = process.argv.slice(isPackaged ? 1 : 2);
@@ -63,6 +64,29 @@ ipcMain.handle('file:pick-and-read', async (event) => {
     return await getFilePayload(filePath);
 });
 
+ipcMain.on('window:minimize', (event) => {
+    BrowserWindow.fromWebContents(event.sender)?.minimize();
+});
+
+ipcMain.on('window:toggle-maximize', (event) => {
+    const target = BrowserWindow.fromWebContents(event.sender);
+    if (!target) return;
+    if (target.isMaximized()) {
+        target.unmaximize();
+    } else {
+        target.maximize();
+    }
+});
+
+ipcMain.on('window:close', (event) => {
+    BrowserWindow.fromWebContents(event.sender)?.close();
+});
+
+ipcMain.handle('window:get-state', (event) => {
+    const target = BrowserWindow.fromWebContents(event.sender);
+    return { maximized: target?.isMaximized() ?? false };
+});
+
 ipcMain.handle('shell:open-external', async (_event, rawUrl: string) => {
     if (typeof rawUrl !== 'string') return;
     let parsed: URL;
@@ -81,13 +105,25 @@ function createWindow() {
         width: 1200,
         height: 800,
         autoHideMenuBar: true,
+        frame: !useCustomTitleBar,
+        backgroundColor: '#101828',
         webPreferences: {
             preload: path.join(__dirname, '../dist-electron/preload.mjs'),
             contextIsolation: true,
             nodeIntegration: false,
         },
-        icon: path.join(__dirname, '../assets/icons/icon.ico'),
+        icon: path.join(__dirname, useCustomTitleBar ? '../assets/icons/icon.png' : '../assets/icons/icon.ico'),
     });
+
+    const sendWindowState = () => {
+        if (win.isDestroyed()) return;
+        win.webContents.send('window:state', { maximized: win.isMaximized() });
+    };
+
+    win.on('maximize', sendWindowState);
+    win.on('unmaximize', sendWindowState);
+    win.on('enter-full-screen', sendWindowState);
+    win.on('leave-full-screen', sendWindowState);
 
     win.webContents.setWindowOpenHandler(({ url }) => {
         if (url.startsWith('http:') || url.startsWith('https:')) {
@@ -124,5 +160,8 @@ function createWindow() {
 
 app.whenReady().then(() => {
     Menu.setApplicationMenu(null);
+    if (useCustomTitleBar && app.isPackaged) {
+        app.setDesktopName('quickview.desktop');
+    }
     createWindow();
 });

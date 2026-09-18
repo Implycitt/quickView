@@ -1631,3 +1631,113 @@
     border-radius: 0.25rem;
     box-shadow: 0 0 0 1px rgba(167, 139, 250, 0.25);
 }
+
+#app-shell {
+    flex: 1 1 0%;
+    min-height: 0;
+}
+
+#titlebar {
+    display: none;
+}
+
+body.has-custom-titlebar #titlebar {
+    display: flex;
+    height: 2.25rem;
+    flex-shrink: 0;
+    align-items: stretch;
+    justify-content: space-between;
+    background: var(--color-gray-800);
+    user-select: none;
+    z-index: 20;
+}
+
+.titlebar-drag {
+    display: flex;
+    flex: 1 1 0%;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+    padding: 0 0.75rem;
+    app-region: drag;
+    -webkit-app-region: drag;
+}
+
+.titlebar-icon {
+    width: 1rem;
+    height: 1rem;
+    flex-shrink: 0;
+}
+
+.titlebar-title {
+    min-width: 0;
+    font-size: 0.8125rem;
+    color: var(--color-gray-300);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.titlebar-controls {
+    display: flex;
+    align-items: stretch;
+    app-region: no-drag;
+    -webkit-app-region: no-drag;
+}
+
+.titlebar-btn {
+    display: flex;
+    width: 2.875rem;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-gray-400);
+    background: transparent;
+    border: none;
+    cursor: default;
+    transition:
+        background-color 120ms ease,
+        color 120ms ease;
+    app-region: no-drag;
+    -webkit-app-region: no-drag;
+}
+
+.titlebar-btn svg {
+    display: block;
+    width: 0.625rem;
+    height: 0.625rem;
+}
+
+.titlebar-btn svg.titlebar-icon-restore {
+    display: none;
+}
+
+.titlebar-btn:hover {
+    background: var(--color-gray-700);
+    color: var(--color-gray-100);
+}
+
+.titlebar-btn:active {
+    background: var(--color-gray-600);
+}
+
+.titlebar-btn:focus-visible {
+    outline: 1px solid var(--color-lavender-400);
+    outline-offset: -1px;
+}
+
+.titlebar-btn-active svg.titlebar-icon-restore {
+    display: block;
+}
+
+.titlebar-btn-active svg.titlebar-icon-maximize {
+    display: none;
+}
+
+#window-close:hover {
+    background: #c42b1c;
+    color: #fff;
+}
+
+#window-close:active {
+    background: #f1707a;
+}
