@@ -17,8 +17,6 @@ export const DOM = {} as {
     pageCounter: HTMLInputElement;
     pageTotal: HTMLSpanElement;
     breadcrumb: HTMLSpanElement;
-    pagePrev: HTMLButtonElement;
-    pageNext: HTMLButtonElement;
     keybindsToggleBtn: HTMLButtonElement;
     keybindsModal: HTMLElement;
     closeKeybindsBtn: HTMLButtonElement;
@@ -43,8 +41,6 @@ export function initDOM() {
     DOM.pageCounter = document.getElementById('page-counter') as HTMLInputElement;
     DOM.pageTotal = document.getElementById('page-total') as HTMLSpanElement;
     DOM.breadcrumb = document.getElementById('breadcrumb') as HTMLSpanElement;
-    DOM.pagePrev = document.getElementById('page-prev') as HTMLButtonElement;
-    DOM.pageNext = document.getElementById('page-next') as HTMLButtonElement;
     DOM.keybindsToggleBtn = document.getElementById('keybinds-toggle') as HTMLButtonElement;
     DOM.keybindsModal = document.getElementById('keybinds-modal') as HTMLElement;
     DOM.closeKeybindsBtn = document.getElementById('close-keybinds') as HTMLButtonElement;

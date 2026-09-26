@@ -7,6 +7,7 @@
     "scripts": {
         "dev": "vite",
         "build": "tsc && vite build",
+        "lint": "eslint .",
         "preview": "vite preview",
         "package": "electron-builder",
         "format": "prettier --write .",
@@ -38,13 +39,18 @@
         }
     },
     "devDependencies": {
+        "@eslint/js": "^10.0.1",
         "@tailwindcss/typography": "^0.5.20",
         "@tailwindcss/vite": "^4.3.3",
+        "@typescript/native": "npm:typescript@7.0.2",
         "electron": "^43.4.0",
         "electron-builder": "^26.15.3",
+        "eslint": "^10.11.0",
+        "globals": "^17.12.0",
         "prettier": "^3.9.8",
         "tailwindcss": "^4.3.3",
-        "typescript": "^7.0.2",
+        "typescript": "npm:@typescript/typescript6@^6.0.2",
+        "typescript-eslint": "^8.70.1",
         "vite": "^8.2.2",
         "vite-plugin-electron": "^1.1.1",
         "vite-plugin-electron-renderer": "^1.0.0"

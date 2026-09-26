@@ -3,7 +3,6 @@ import {
     DOM,
     initDOM,
     toggleSidebar,
-    updateScrollModeClasses,
     isSidebarOpen,
     getSavedSidebarWidth,
     setSavedSidebarWidth,
@@ -232,14 +231,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             input.blur();
         }
     });
-
-    const stepPage = (delta: number) => {
-        if (!PdfState.currentPdfDoc) return;
-        const parsed = parseInt(DOM.pageCounter.value, 10);
-        goToPage((Number.isNaN(parsed) ? 1 : parsed) + delta);
-    };
-    DOM.pagePrev?.addEventListener('click', () => stepPage(-1));
-    DOM.pageNext?.addEventListener('click', () => stepPage(1));
 
     DOM.zoomLevelSpan?.addEventListener('change', (event) => {
         const input = event.target as HTMLInputElement;

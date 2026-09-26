@@ -37,11 +37,11 @@ let topSpacer: HTMLElement | null = null;
 let bottomSpacer: HTMLElement | null = null;
 let spacerTopHeight = -1;
 let spacerBottomHeight = -1;
-let pageSizePoints = new Map<number, { width: number; height: number }>();
+const pageSizePoints = new Map<number, { width: number; height: number }>();
 let placeholderPoints = { ...DEFAULT_PAGE_POINTS };
-let renderedCanvases = new Map<number, HTMLCanvasElement>();
-let pendingRenders = new Map<number, { task: any; canvas: HTMLCanvasElement }>();
-let pageHandles = new Map<number, any>();
+const renderedCanvases = new Map<number, HTMLCanvasElement>();
+const pendingRenders = new Map<number, { task: any; canvas: HTMLCanvasElement }>();
+const pageHandles = new Map<number, any>();
 let renderQueue: number[] = [];
 let activeMainRenders = 0;
 let activeThumbRenders = 0;
@@ -52,12 +52,12 @@ let scrollRafPending = false;
 let scrollSettleTimer: ReturnType<typeof setTimeout> | null = null;
 let thumbScrollRafPending = false;
 let thumbSettleTimer: ReturnType<typeof setTimeout> | null = null;
-let thumbCanvases = new Map<number, HTMLCanvasElement>();
-let thumbPending = new Map<number, { task: any }>();
+const thumbCanvases = new Map<number, HTMLCanvasElement>();
+const thumbPending = new Map<number, { task: any }>();
 let thumbQueue: number[] = [];
 let thumbElements: HTMLElement[] = [];
 let thumbTops: number[] = [];
-let thumbAspects = new Map<number, number>();
+const thumbAspects = new Map<number, number>();
 let measuring = false;
 let viewerVersion = 0;
 let savedScrollPos: PdfLocation | null = null;
@@ -648,8 +648,7 @@ export function whenMainRenderIdle(): Promise<void> {
 export async function renderAllMainPages() {
     if (!PdfState.currentPdfDoc || !DOM.mainContentNode) return;
     const run = runRenderAllMainPages();
-    let trackedRun: Promise<void>;
-    trackedRun = run.finally(() => {
+    const trackedRun = run.finally(() => {
         if (mainRenderInFlight === trackedRun) mainRenderInFlight = null;
     });
     mainRenderInFlight = trackedRun;
@@ -1203,7 +1202,7 @@ let outlineFollowSmooth = false;
 let outlineFollowTimer: ReturnType<typeof setTimeout> | null = null;
 let outlineLayoutValid = false;
 let sidebarViewportValid = false;
-let outlineRowBoxes = new Map<HTMLElement, { top: number; height: number }>();
+const outlineRowBoxes = new Map<HTMLElement, { top: number; height: number }>();
 let sidebarScrollTop = 0;
 let sidebarViewportHeight = 0;
 let outlinePaneTop = 0;
@@ -1423,12 +1422,7 @@ export async function renderOutline() {
     outlineDests.clear();
     outlinePositions.clear();
     outlineParentRow.clear();
-    let outline: any[] | null = null;
-    try {
-        outline = await PdfState.currentPdfDoc.getOutline();
-    } catch {
-        outline = null;
-    }
+    const outline = await PdfState.currentPdfDoc.getOutline().catch(() => null);
     if (!outline || outline.length === 0) {
         const empty = document.createElement('div');
         empty.className = 'text-gray-500 text-xs italic p-2';
