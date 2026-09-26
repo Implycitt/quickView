@@ -1,5 +1,6 @@
 import { DOM, getSidebarTargetWidth, updateScrollModeClasses, setSidebarFollowLabel } from '../ui.js';
 import { renderPageTextLayer, clearPageSpans, resetSearchState } from './pdfSearch.js';
+import type { PdfLocation } from '../viewerState.js';
 
 export const PdfState = {
     currentPdfDoc: null as any,
@@ -59,8 +60,10 @@ let thumbTops: number[] = [];
 let thumbAspects = new Map<number, number>();
 let measuring = false;
 let viewerVersion = 0;
-let savedScrollPos: { page: number; fraction: number } | null = null;
+let savedScrollPos: PdfLocation | null = null;
+let pendingRestoreLocation: PdfLocation | null = null;
 let lastKnownPage = 1;
+let snapResumeHandler: (() => void) | null = null;
 let currentFileName: string | null = null;
 
 function sizeForPoints(points: { width: number; height: number }): { width: number; height: number } {
@@ -124,6 +127,24 @@ function pageTop(pageNum: number): number {
     const top = pageTops[pageNum - 1];
     if (top !== undefined) return top;
     return geoLayout?.baseTop ?? DEFAULT_PAGE_PADDING;
+}
+
+function pageBottom(pageNum: number): number {
+    return pageTop(pageNum) + pageHeight(pageNum);
+}
+
+function pageAtOffset(y: number): number {
+    if (pageCount === 0) return 1;
+    ensurePageGeometry();
+    const target = Math.max(0, Math.min(pageBottom(pageCount), y));
+    let low = 1;
+    let high = pageCount;
+    while (low < high) {
+        const middle = Math.floor((low + high) / 2);
+        if (pageBottom(middle) <= target) low = middle + 1;
+        else high = middle;
+    }
+    return low;
 }
 
 function mountMargins(): { behind: number; ahead: number } {
@@ -284,12 +305,76 @@ function releasePage(pageNum: number) {
     } catch {}
 }
 
-function captureScrollPos(): { page: number; fraction: number } | null {
+function captureScrollPos(): PdfLocation | null {
     if (!scrollContainer || pageCount === 0) return savedScrollPos;
     const scrollTop = scrollContainer.scrollTop;
     const page = currentPageAtViewport();
     const height = pageHeight(page) || 1;
-    return { page, fraction: Math.max(0, Math.min(1, (scrollTop - pageTop(page)) / height)) };
+    const fraction = Math.max(0, Math.min(1, (scrollTop - pageTop(page)) / height));
+    return {
+        page,
+        fraction,
+        scrollTop,
+        scale: PdfState.currentScale,
+    };
+}
+
+export function getPdfLocation(): PdfLocation | null {
+    const location = captureScrollPos();
+    if (location) savedScrollPos = location;
+    return location;
+}
+
+export function applyPdfViewerSettings(settings: {
+    isSnapMode: boolean;
+    snapSuspended: boolean;
+    sidebarFollow: boolean;
+}) {
+    PdfState.isSnapMode = settings.isSnapMode;
+    PdfState.sidebarFollow = settings.sidebarFollow;
+    clearSnapResumeHandler();
+    snapSuspended = settings.snapSuspended && settings.isSnapMode;
+    setSidebarFollowLabel(PdfState.sidebarFollow);
+    updateScrollModeClasses(PdfState.isSnapMode);
+    if (snapSuspended && scrollContainer) {
+        scrollContainer.classList.remove('snap-y', 'snap-mandatory');
+        installSnapResumeHandler();
+    }
+    applySnapClassesToMounted();
+    window.dispatchEvent(new Event('qv:pdf-viewer-settings-changed'));
+}
+
+export function isSnapSuspended(): boolean {
+    return snapSuspended;
+}
+
+export function setPdfZoom(scale: number, mode: 'auto' | 'manual') {
+    if (!Number.isFinite(scale) || scale <= 0) return;
+    PdfState.currentScale = scale;
+    PdfState.zoomMode = mode;
+    if (DOM.zoomLevelSpan) DOM.zoomLevelSpan.value = `${Math.round(scale * 100)}%`;
+    window.dispatchEvent(new Event('qv:pdf-viewer-settings-changed'));
+}
+
+export function restorePdfPosition(location: PdfLocation | null) {
+    if (!location) return;
+    savedScrollPos = location;
+    pendingRestoreLocation = location;
+    lastKnownPage = Math.max(1, Math.min(pageCount || location.page, location.page));
+    if (!scrollContainer || pageCount === 0) return;
+    const page = lastKnownPage;
+    mountAroundPage(page);
+    ensurePageGeometry();
+    const target = scrollTopForLocation(location);
+    scrollContainer.style.scrollBehavior = 'auto';
+    scrollContainer.scrollTop = target;
+    scrollContainer.style.removeProperty('scroll-behavior');
+    if (DOM.pageCounter) {
+        DOM.pageCounter.value = String(page);
+        DOM.pageCounter.dataset.current = String(page);
+    }
+    if (!snapSuspended) pendingRestoreLocation = null;
+    scheduleMainWindowRender();
 }
 
 export function goToPage(pageNum: number) {
@@ -411,20 +496,20 @@ function scrollThumbIntoView(thumb: HTMLElement) {
     }
 }
 
-function restoreScrollPos(pos: { page: number; fraction: number } | null) {
-    if (!pos || !scrollContainer || pageCount === 0) return;
+function scrollTopForLocation(pos: PdfLocation): number {
     const page = Math.min(pageCount, Math.max(1, pos.page));
-    mountAroundPage(page);
-    const height = pageHeight(page);
-    let target: number;
-    if (PdfState.isSnapMode && !snapSuspended) {
-        target = pageTop(page) + (height - scrollContainer.clientHeight) / 2;
-        target = Math.max(0, target);
-    } else {
-        target = pageTop(page) + pos.fraction * height;
-    }
+    const scaleMatches = Math.abs(PdfState.currentScale - pos.scale) < 0.001;
+    const target = scaleMatches ? pos.scrollTop : pageTop(page) + pos.fraction * pageHeight(page);
+    const maxScrollTop = Math.max(0, pageBottom(pageCount) - (scrollContainer?.clientHeight ?? 0));
+    return Math.max(0, Math.min(maxScrollTop, target));
+}
+
+function restoreScrollPos(pos: PdfLocation | null) {
+    if (!pos || !scrollContainer || pageCount === 0) return;
+    mountAroundPage(pos.page);
+    ensurePageGeometry();
     scrollContainer.style.scrollBehavior = 'auto';
-    scrollContainer.scrollTop = target;
+    scrollContainer.scrollTop = scrollTopForLocation(pos);
     scrollContainer.style.removeProperty('scroll-behavior');
 }
 
@@ -469,6 +554,14 @@ function isObsoleteRender(err: any, doc: any): boolean {
 export function resetPdfState(keepPosition = false) {
     const outgoing = PdfState.currentPdfDoc;
     const kept = keepPosition ? captureScrollPos() : null;
+    clearSnapResumeHandler();
+    pendingRestoreLocation = null;
+    if (!keepPosition) {
+        PdfState.currentScale = 1;
+        PdfState.isSnapMode = true;
+        PdfState.sidebarFollow = true;
+        snapSuspended = false;
+    }
     resetSearchState();
     followSuppressed = false;
     thumbDoc = null;
@@ -487,6 +580,7 @@ export function resetPdfState(keepPosition = false) {
     geoLayout = null;
     placeholderPoints = { ...DEFAULT_PAGE_POINTS };
     savedScrollPos = kept;
+    pendingRestoreLocation = null;
     lastKnownPage = kept?.page ?? 1;
     currentFileName = null;
     syncOutlineBreadcrumb();
@@ -526,35 +620,19 @@ function resetViewer() {
     }
 }
 
-function pageAtOffset(y: number): number {
-    if (pageCount === 0) return 1;
-    ensurePageGeometry();
-    let lo = 0;
-    let hi = pageTops.length - 1;
-    while (lo < hi) {
-        const mid = (lo + hi) >> 1;
-        if (pageTops[mid] < y) lo = mid + 1;
-        else hi = mid;
-    }
-    return lo + 1;
-}
-
 function currentPageAtViewport(): number {
     if (pageCount === 0 || !scrollContainer) return lastKnownPage;
     const top = scrollContainer.scrollTop;
     const bottom = top + (scrollContainer.clientHeight || 1);
-    const mid = (top + bottom) / 2;
-    let best = pageAtOffset(mid);
+    const middle = top + (bottom - top) / 2;
+    let best = pageAtOffset(middle);
     let bestVisible = -1;
-    const start = Math.max(1, best - 1);
-    const end = Math.min(pageCount, best + 1);
-    for (let p = start; p <= end; p++) {
-        const elTop = pageTop(p);
-        const elBottom = elTop + pageHeight(p);
-        const visible = Math.min(elBottom, bottom) - Math.max(elTop, top);
+    for (const page of [best, best - 1, best + 1]) {
+        if (page < 1 || page > pageCount) continue;
+        const visible = Math.max(0, Math.min(pageBottom(page), bottom) - Math.max(pageTop(page), top));
         if (visible > bestVisible) {
             bestVisible = visible;
-            best = p;
+            best = page;
         }
     }
     lastKnownPage = best;
@@ -570,14 +648,16 @@ export function whenMainRenderIdle(): Promise<void> {
 export async function renderAllMainPages() {
     if (!PdfState.currentPdfDoc || !DOM.mainContentNode) return;
     const run = runRenderAllMainPages();
-    mainRenderInFlight = run.finally(() => {
-        if (mainRenderInFlight === run) mainRenderInFlight = null;
+    let trackedRun: Promise<void>;
+    trackedRun = run.finally(() => {
+        if (mainRenderInFlight === trackedRun) mainRenderInFlight = null;
     });
-    return mainRenderInFlight;
+    mainRenderInFlight = trackedRun;
+    return trackedRun;
 }
 
 async function runRenderAllMainPages() {
-    const restore = savedScrollPos;
+    const restore = pendingRestoreLocation ?? savedScrollPos;
     const version = viewerVersion + 1;
     viewerVersion = version;
     cancelPendingRenders();
@@ -648,6 +728,7 @@ async function runRenderAllMainPages() {
     DOM.mainContentNode.appendChild(scroller);
 
     scroller.addEventListener('scroll', onMainScroll, { passive: true });
+    if (snapSuspended) installSnapResumeHandler();
 
     ensurePageGeometry();
     mountAroundPage(restore?.page ?? lastKnownPage ?? 1);
@@ -662,7 +743,13 @@ async function runRenderAllMainPages() {
 
     await measureAllPages(version);
     if (version !== viewerVersion) return;
-    restoreScrollPos(restore ?? savedScrollPos);
+    const locationToRestore = pendingRestoreLocation ?? restore;
+    if (locationToRestore) restoreScrollPos(locationToRestore);
+    if (locationToRestore) {
+        pendingRestoreLocation = null;
+        savedScrollPos = captureScrollPos() ?? savedScrollPos;
+    }
+    window.dispatchEvent(new Event('qv:pdf-layout-rendered'));
     scheduleMainWindowRender();
 }
 
@@ -682,7 +769,14 @@ function onMainScroll() {
 
 function renderVisibleWindow() {
     if (!scrollContainer || !PdfState.currentPdfDoc || pageCount === 0) return;
-    savedScrollPos = captureScrollPos();
+    const position = captureScrollPos();
+    if (position && pendingRestoreLocation) {
+        const tolerance = Math.max(4, scrollContainer.clientHeight * 0.05);
+        const closeToRestoredPosition =
+            Math.abs(scrollContainer.scrollTop - scrollTopForLocation(pendingRestoreLocation)) <= tolerance;
+        if (!closeToRestoredPosition) pendingRestoreLocation = null;
+    }
+    if (position && !pendingRestoreLocation) savedScrollPos = position;
     syncPageCounter();
     syncActiveThumb();
     syncOutline(currentViewPosition());
@@ -691,6 +785,7 @@ function renderVisibleWindow() {
     const clientHeight = scrollContainer.clientHeight || 1;
     const viewFirst = pageAtOffset(scrollTop);
     const viewLast = pageAtOffset(scrollTop + clientHeight);
+
     const first = Math.max(1, viewFirst - margins.behind);
     const last = Math.min(pageCount, viewLast + margins.ahead);
 
@@ -994,21 +1089,35 @@ async function addPageLinkLayer(page: any, container: HTMLElement, viewport: any
 
 let snapSuspended = false;
 
+function clearSnapResumeHandler() {
+    if (!snapResumeHandler) return;
+    window.removeEventListener('wheel', snapResumeHandler, { capture: true });
+    window.removeEventListener('keydown', snapResumeHandler, { capture: true });
+    snapResumeHandler = null;
+}
+
+function installSnapResumeHandler() {
+    if (!scrollContainer || !PdfState.isSnapMode || !snapSuspended || snapResumeHandler) return;
+    const resume = () => {
+        clearSnapResumeHandler();
+        snapSuspended = false;
+        if (!scrollContainer || !PdfState.isSnapMode) return;
+        scrollContainer.classList.add('snap-y', 'snap-mandatory');
+        applySnapClassesToMounted();
+        window.dispatchEvent(new Event('qv:pdf-viewer-settings-changed'));
+    };
+    snapResumeHandler = resume;
+    window.addEventListener('wheel', resume, { capture: true, passive: true });
+    window.addEventListener('keydown', resume, { capture: true });
+}
+
 function suspendSnap() {
     if (!PdfState.isSnapMode || snapSuspended || !scrollContainer) return;
     if (!scrollContainer.classList.contains('snap-mandatory')) return;
     snapSuspended = true;
     scrollContainer.classList.remove('snap-y', 'snap-mandatory');
-    const resume = () => {
-        snapSuspended = false;
-        window.removeEventListener('wheel', resume, { capture: true });
-        window.removeEventListener('keydown', resume, { capture: true });
-        if (!scrollContainer || !PdfState.isSnapMode) return;
-        scrollContainer.classList.add('snap-y', 'snap-mandatory');
-        applySnapClassesToMounted();
-    };
-    window.addEventListener('wheel', resume, { capture: true, passive: true });
-    window.addEventListener('keydown', resume, { capture: true });
+    installSnapResumeHandler();
+    window.dispatchEvent(new Event('qv:pdf-viewer-settings-changed'));
 }
 
 export function jumpToPage(pageNum: number, yCss: number | null = null, center = false) {

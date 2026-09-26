@@ -10,7 +10,9 @@ declare global {
         electronAPI: {
             platform: string;
             pickAndReadFile: () => Promise<FileResponse | null>;
+            readFile: (path: string) => Promise<FileResponse>;
             onFileUpdated: (callback: (data: FileResponse) => void) => void;
+            onFileUnavailable: (callback: (path: string) => void) => void;
             openExternal: (url: string) => Promise<void>;
             minimize: () => void;
             toggleMaximize: () => void;

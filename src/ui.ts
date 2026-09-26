@@ -7,6 +7,7 @@ export const DOM = {} as {
     tabSectionsBtn: HTMLButtonElement;
     sidebarFollowBtn: HTMLButtonElement;
     sidebarToggle: HTMLButtonElement;
+    sidebarResizer: HTMLElement;
     mainContentNode: HTMLElement;
     pdfTools: HTMLElement;
     toggleScrollModeBtn: HTMLButtonElement;
@@ -32,6 +33,7 @@ export function initDOM() {
     DOM.tabSectionsBtn = document.getElementById('tab-sections') as HTMLButtonElement;
     DOM.sidebarFollowBtn = document.getElementById('sidebar-follow-btn') as HTMLButtonElement;
     DOM.sidebarToggle = document.getElementById('sidebar-toggle') as HTMLButtonElement;
+    DOM.sidebarResizer = document.getElementById('sidebar-resizer') as HTMLElement;
     DOM.mainContentNode = document.getElementById('main-content') as HTMLElement;
     DOM.pdfTools = document.getElementById('pdf-tools') as HTMLElement;
     DOM.toggleScrollModeBtn = document.getElementById('toggle-scroll-mode') as HTMLButtonElement;
@@ -49,6 +51,21 @@ export function initDOM() {
 }
 
 let savedSidebarWidth = '280px';
+export function getSavedSidebarWidth(): number {
+    const width = parseFloat(savedSidebarWidth);
+    return Number.isFinite(width) && width > 0 ? width : 280;
+}
+
+export function setSavedSidebarWidth(width: number) {
+    if (!Number.isFinite(width)) return;
+    savedSidebarWidth = `${Math.max(150, Math.min(600, width))}px`;
+    if (DOM.sidebar && DOM.sidebar.style.width !== '0px') DOM.sidebar.style.width = savedSidebarWidth;
+}
+
+export function isSidebarOpen(): boolean {
+    return !!DOM.sidebar && DOM.sidebar.style.width !== '0px';
+}
+
 export function toggleSidebar(forceState?: 'open' | 'closed') {
     if (!DOM.sidebar) return;
 
@@ -57,12 +74,14 @@ export function toggleSidebar(forceState?: 'open' | 'closed') {
     if (forceState === 'open' || (!forceState && isClosed)) {
         DOM.sidebar.style.width = savedSidebarWidth;
         window.dispatchEvent(new CustomEvent('qv:sidebar-toggled', { detail: { opened: true } }));
+        window.dispatchEvent(new Event('qv:sidebar-width-changed'));
     } else {
         if (!isClosed) {
             savedSidebarWidth = DOM.sidebar.style.width || '280px';
         }
         DOM.sidebar.style.width = '0px';
         window.dispatchEvent(new CustomEvent('qv:sidebar-toggled', { detail: { opened: false } }));
+        window.dispatchEvent(new Event('qv:sidebar-width-changed'));
     }
 }
 
@@ -94,26 +113,27 @@ export function getSidebarTargetWidth(): number {
 
 export function updateScrollModeClasses(isSnapMode: boolean) {
     const scrollContainer = document.getElementById('pdf-scroll-container');
-    if (!scrollContainer || !DOM.toggleScrollModeBtn) return;
+    if (!DOM.toggleScrollModeBtn) return;
 
     DOM.toggleScrollModeBtn.innerText = `Mode: ${isSnapMode ? 'Snap' : 'Free'}`;
+    if (!scrollContainer) return;
 
     if (isSnapMode) {
         scrollContainer.classList.add('snap-y', 'snap-mandatory');
         scrollContainer
             .querySelectorAll<HTMLElement>('.pdf-page-container')
-            .forEach((w) => w.classList.add('snap-center'));
+            .forEach((page) => page.classList.add('snap-center'));
     } else {
         scrollContainer.classList.remove('snap-y', 'snap-mandatory');
         scrollContainer
             .querySelectorAll<HTMLElement>('.pdf-page-container')
-            .forEach((w) => w.classList.remove('snap-center'));
+            .forEach((page) => page.classList.remove('snap-center'));
     }
 }
 
 export function initSidebarResizer() {
-    const sidebar = document.getElementById('sidebar');
-    const resizer = document.getElementById('sidebar-resizer');
+    const sidebar = DOM.sidebar;
+    const resizer = DOM.sidebarResizer;
 
     if (!sidebar || !resizer) return;
 
@@ -144,6 +164,7 @@ export function initSidebarResizer() {
             document.body.style.userSelect = '';
             sidebar.classList.add('transition-[width]', 'duration-300');
             savedSidebarWidth = sidebar.style.width || savedSidebarWidth;
+            window.dispatchEvent(new Event('qv:sidebar-width-changed'));
             window.dispatchEvent(new Event('resize'));
         }
     });

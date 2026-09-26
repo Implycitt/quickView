@@ -9,6 +9,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 let activeWatchedPath: string | null = null;
+let activeWatcher: { sender: Electron.WebContents; listener: (curr: fs.Stats, prev: fs.Stats) => void } | null = null;
 const useCustomTitleBar = process.platform === 'linux';
 
 const isPackaged = app.isPackaged;
@@ -31,24 +32,38 @@ async function getFilePayload(targetPath: string) {
 }
 
 function setupFileWatcher(targetPath: string, webContents: Electron.WebContents) {
-    if (activeWatchedPath) {
-        fs.unwatchFile(activeWatchedPath);
+    if (activeWatchedPath && activeWatcher) {
+        fs.unwatchFile(activeWatchedPath, activeWatcher.listener);
     }
 
     activeWatchedPath = targetPath;
-
-    fs.watchFile(targetPath, { interval: 300 }, async (curr, prev) => {
-        if (curr.mtimeMs !== prev.mtimeMs) {
-            try {
-                await new Promise((resolve) => setTimeout(resolve, 50));
-                const payload = await getFilePayload(targetPath);
-                webContents.send('file-updated', payload);
-            } catch (err) {
-                console.error('[Main] Error re-reading file on update:', err);
-            }
+    const listener = async (curr: fs.Stats, prev: fs.Stats) => {
+        if (curr.mtimeMs === prev.mtimeMs || webContents.isDestroyed()) return;
+        try {
+            await new Promise((resolve) => setTimeout(resolve, 50));
+            const payload = await getFilePayload(targetPath);
+            webContents.send('file-updated', payload);
+        } catch (err) {
+            console.error('[Main] Error re-reading file on update:', err);
         }
-    });
+    };
+    activeWatcher = { sender: webContents, listener };
+    fs.watchFile(targetPath, { interval: 300 }, listener);
 }
+
+ipcMain.handle('file:read', async (event, targetPath: string) => {
+    if (typeof targetPath !== 'string' || !path.isAbsolute(targetPath)) {
+        throw new Error('A valid absolute file path is required.');
+    }
+    const fileName = path.basename(targetPath).toLowerCase();
+    if (!['.md', '.pdf'].some((extension) => fileName.endsWith(extension))) {
+        throw new Error('QuickView only opens Markdown and PDF documents.');
+    }
+    await fs.promises.access(targetPath, fs.constants.R_OK);
+    const payload = await getFilePayload(targetPath);
+    setupFileWatcher(targetPath, event.sender);
+    return payload;
+});
 
 ipcMain.handle('file:pick-and-read', async (event) => {
     const { canceled, filePaths } = await dialog.showOpenDialog({
@@ -148,6 +163,8 @@ function createWindow() {
             } catch (err) {
                 console.error('Failed to load CLI file:', err);
             }
+        } else if (cliFilePath) {
+            win.webContents.send('file-unavailable', cliFilePath);
         }
     });
 
