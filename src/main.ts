@@ -108,7 +108,7 @@ function setupFileWatcher(targetPath: string, webContents: Electron.WebContents)
                     console.error('[Main] Error re-reading file on update:', err);
                 }
             }
-        }, 500);
+        }, 200);
     };
 
     watcher.listener = (curr: fs.Stats, prev: fs.Stats) => {
@@ -120,7 +120,7 @@ function setupFileWatcher(targetPath: string, webContents: Electron.WebContents)
     };
 
     activeWatcher = watcher;
-    fs.watchFile(targetPath, { interval: 300 }, watcher.listener);
+    fs.watchFile(targetPath, { interval: 100 }, watcher.listener);
 }
 
 ipcMain.handle('file:get-launch-path', () => {
