@@ -500,7 +500,10 @@ function scrollTopForLocation(pos: PdfLocation): number {
     const page = Math.min(pageCount, Math.max(1, pos.page));
     const scaleMatches = Math.abs(PdfState.currentScale - pos.scale) < 0.001;
     const target = scaleMatches ? pos.scrollTop : pageTop(page) + pos.fraction * pageHeight(page);
-    const maxScrollTop = Math.max(0, pageBottom(pageCount) - (scrollContainer?.clientHeight ?? 0));
+    const maxScrollTop = Math.max(
+        0,
+        (scrollContainer?.scrollHeight ?? pageBottom(pageCount)) - (scrollContainer?.clientHeight ?? 0),
+    );
     return Math.max(0, Math.min(maxScrollTop, target));
 }
 

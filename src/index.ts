@@ -263,13 +263,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.warn(`Could not restore missing QuickView document: ${path}`);
     });
 
-    const lastDocumentPath = getLastDocumentPath();
-    if (lastDocumentPath) {
+    const launchPath = await window.electronAPI.getLaunchPath();
+    const documentPath = launchPath || getLastDocumentPath();
+    if (documentPath) {
         try {
-            const content = await window.electronAPI.readFile(lastDocumentPath);
+            const content = await window.electronAPI.readFile(documentPath);
             await openDocument(content);
         } catch (error) {
-            console.warn('Could not reopen the last QuickView document:', error);
+            console.warn('Could not open the QuickView document:', error);
             setLastDocumentPath(null);
         }
     }

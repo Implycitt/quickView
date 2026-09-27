@@ -11,6 +11,7 @@ declare global {
             platform: string;
             pickAndReadFile: () => Promise<FileResponse | null>;
             readFile: (path: string) => Promise<FileResponse>;
+            getLaunchPath: () => Promise<string | null>;
             onFileUpdated: (callback: (data: FileResponse) => void) => void;
             onFileUnavailable: (callback: (path: string) => void) => void;
             openExternal: (url: string) => Promise<void>;

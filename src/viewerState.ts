@@ -27,9 +27,24 @@ export interface StoredViewerState {
 const STORAGE_PREFIX = 'quickview.document-view.v1:';
 const LAST_DOCUMENT_PATH_KEY = 'quickview.last-document-path.v1';
 
+function clearPersistedViewerState(): void {
+    try {
+        for (let index = localStorage.length - 1; index >= 0; index--) {
+            const key = localStorage.key(index);
+            if (key === LAST_DOCUMENT_PATH_KEY || key?.startsWith(STORAGE_PREFIX)) {
+                localStorage.removeItem(key);
+            }
+        }
+    } catch {
+        // Storage may be unavailable; session-scoped state still works independently.
+    }
+}
+
+clearPersistedViewerState();
+
 export function getLastDocumentPath(): string | null {
     try {
-        return localStorage.getItem(LAST_DOCUMENT_PATH_KEY) || null;
+        return sessionStorage.getItem(LAST_DOCUMENT_PATH_KEY) || null;
     } catch {
         return null;
     }
@@ -37,8 +52,8 @@ export function getLastDocumentPath(): string | null {
 
 export function setLastDocumentPath(path: string | null): void {
     try {
-        if (path) localStorage.setItem(LAST_DOCUMENT_PATH_KEY, path);
-        else localStorage.removeItem(LAST_DOCUMENT_PATH_KEY);
+        if (path) sessionStorage.setItem(LAST_DOCUMENT_PATH_KEY, path);
+        else sessionStorage.removeItem(LAST_DOCUMENT_PATH_KEY);
     } catch {
         // Storage may be unavailable; reopening the last document is optional.
     }
@@ -90,7 +105,7 @@ function isStoredViewerState(value: unknown): value is StoredViewerState {
 
 export function readViewerState(documentId: string): StoredViewerState | null {
     try {
-        const serialized = localStorage.getItem(`${STORAGE_PREFIX}${documentId}`);
+        const serialized = sessionStorage.getItem(`${STORAGE_PREFIX}${documentId}`);
         if (!serialized) return null;
         const parsed: unknown = JSON.parse(serialized);
         return isStoredViewerState(parsed) ? parsed : null;
@@ -101,7 +116,7 @@ export function readViewerState(documentId: string): StoredViewerState | null {
 
 export function writeViewerState(documentId: string, state: StoredViewerState): void {
     try {
-        localStorage.setItem(`${STORAGE_PREFIX}${documentId}`, JSON.stringify(state));
+        sessionStorage.setItem(`${STORAGE_PREFIX}${documentId}`, JSON.stringify(state));
     } catch {
         // Storage may be unavailable or full; the viewer should still work normally.
     }

@@ -10,6 +10,7 @@ const __dirname = path.dirname(__filename);
 
 let activeWatchedPath: string | null = null;
 let activeWatcher: { sender: Electron.WebContents; listener: (curr: fs.Stats, prev: fs.Stats) => void } | null = null;
+let launchPathDelivered = false;
 const useCustomTitleBar = process.platform === 'linux';
 
 const isPackaged = app.isPackaged;
@@ -28,6 +29,17 @@ async function getFilePayload(targetPath: string) {
     } else {
         const fileBuffer = await fs.promises.readFile(targetPath);
         return { name: fileName, path: targetPath, data: fileBuffer };
+    }
+}
+
+function isDevServerNavigation(targetUrl: string): boolean {
+    const devServerUrl = process.env.VITE_DEV_SERVER_URL;
+    if (!devServerUrl) return false;
+
+    try {
+        return new URL(targetUrl).origin === new URL(devServerUrl).origin;
+    } catch {
+        return false;
     }
 }
 
@@ -50,6 +62,12 @@ function setupFileWatcher(targetPath: string, webContents: Electron.WebContents)
     activeWatcher = { sender: webContents, listener };
     fs.watchFile(targetPath, { interval: 300 }, listener);
 }
+
+ipcMain.handle('file:get-launch-path', () => {
+    if (launchPathDelivered) return null;
+    launchPathDelivered = true;
+    return cliFilePath ? path.resolve(cliFilePath) : null;
+});
 
 ipcMain.handle('file:read', async (event, targetPath: string) => {
     if (typeof targetPath !== 'string' || !path.isAbsolute(targetPath)) {
@@ -148,23 +166,11 @@ function createWindow() {
     });
 
     win.webContents.on('will-navigate', (event, url) => {
+        if (isDevServerNavigation(url)) return;
+
         event.preventDefault();
         if (url.startsWith('http:') || url.startsWith('https:')) {
             shell.openExternal(url);
-        }
-    });
-
-    win.webContents.on('did-finish-load', async () => {
-        if (cliFilePath && fs.existsSync(cliFilePath)) {
-            try {
-                setupFileWatcher(cliFilePath, win.webContents);
-                const payload = await getFilePayload(cliFilePath);
-                win.webContents.send('file-updated', payload);
-            } catch (err) {
-                console.error('Failed to load CLI file:', err);
-            }
-        } else if (cliFilePath) {
-            win.webContents.send('file-unavailable', cliFilePath);
         }
     });
 
