@@ -8,8 +8,16 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+type ActiveWatcher = {
+    sender: Electron.WebContents;
+    listener: (curr: fs.Stats, prev: fs.Stats) => void;
+    debounceTimer: ReturnType<typeof setTimeout> | null;
+    revision: number;
+    latestStats: fs.Stats | null;
+};
+
 let activeWatchedPath: string | null = null;
-let activeWatcher: { sender: Electron.WebContents; listener: (curr: fs.Stats, prev: fs.Stats) => void } | null = null;
+let activeWatcher: ActiveWatcher | null = null;
 let launchPathDelivered = false;
 const useCustomTitleBar = process.platform === 'linux';
 
@@ -32,6 +40,16 @@ async function getFilePayload(targetPath: string) {
     }
 }
 
+function sameFileVersion(left: fs.Stats, right: fs.Stats): boolean {
+    return (
+        left.mtimeMs === right.mtimeMs &&
+        left.ctimeMs === right.ctimeMs &&
+        left.size === right.size &&
+        left.ino === right.ino &&
+        left.dev === right.dev
+    );
+}
+
 function isDevServerNavigation(targetUrl: string): boolean {
     const devServerUrl = process.env.VITE_DEV_SERVER_URL;
     if (!devServerUrl) return false;
@@ -46,21 +64,63 @@ function isDevServerNavigation(targetUrl: string): boolean {
 function setupFileWatcher(targetPath: string, webContents: Electron.WebContents) {
     if (activeWatchedPath && activeWatcher) {
         fs.unwatchFile(activeWatchedPath, activeWatcher.listener);
+        if (activeWatcher.debounceTimer) clearTimeout(activeWatcher.debounceTimer);
     }
 
     activeWatchedPath = targetPath;
-    const listener = async (curr: fs.Stats, prev: fs.Stats) => {
-        if (curr.mtimeMs === prev.mtimeMs || webContents.isDestroyed()) return;
-        try {
-            await new Promise((resolve) => setTimeout(resolve, 50));
-            const payload = await getFilePayload(targetPath);
-            webContents.send('file-updated', payload);
-        } catch (err) {
-            console.error('[Main] Error re-reading file on update:', err);
-        }
+    const watcher: ActiveWatcher = {
+        sender: webContents,
+        listener: () => {},
+        debounceTimer: null,
+        revision: 0,
+        latestStats: null,
     };
-    activeWatcher = { sender: webContents, listener };
-    fs.watchFile(targetPath, { interval: 300 }, listener);
+
+    const scheduleReload = () => {
+        if (watcher.debounceTimer) clearTimeout(watcher.debounceTimer);
+        const revision = watcher.revision;
+        watcher.debounceTimer = setTimeout(async () => {
+            watcher.debounceTimer = null;
+            if (activeWatcher !== watcher || revision !== watcher.revision || watcher.sender.isDestroyed()) return;
+
+            try {
+                const beforeRead = await fs.promises.stat(targetPath);
+                if (activeWatcher !== watcher || revision !== watcher.revision || watcher.sender.isDestroyed()) return;
+                if (watcher.latestStats && !sameFileVersion(beforeRead, watcher.latestStats)) {
+                    watcher.latestStats = beforeRead;
+                    watcher.revision++;
+                    scheduleReload();
+                    return;
+                }
+
+                const payload = await getFilePayload(targetPath);
+                const afterRead = await fs.promises.stat(targetPath);
+                if (!sameFileVersion(beforeRead, afterRead)) {
+                    watcher.latestStats = afterRead;
+                    watcher.revision++;
+                    scheduleReload();
+                    return;
+                }
+                if (activeWatcher !== watcher || revision !== watcher.revision || watcher.sender.isDestroyed()) return;
+                watcher.sender.send('file-updated', payload);
+            } catch (err) {
+                if (activeWatcher === watcher && revision === watcher.revision) {
+                    console.error('[Main] Error re-reading file on update:', err);
+                }
+            }
+        }, 200);
+    };
+
+    watcher.listener = (curr: fs.Stats, prev: fs.Stats) => {
+        if (sameFileVersion(curr, prev) || watcher.sender.isDestroyed()) return;
+
+        watcher.latestStats = curr;
+        watcher.revision++;
+        scheduleReload();
+    };
+
+    activeWatcher = watcher;
+    fs.watchFile(targetPath, { interval: 100 }, watcher.listener);
 }
 
 ipcMain.handle('file:get-launch-path', () => {
