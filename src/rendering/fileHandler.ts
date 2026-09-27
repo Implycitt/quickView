@@ -24,6 +24,27 @@ let displayedIdentity: string | null = null;
 let currentViewerIdentity: string | null = null;
 let currentViewerState: StoredViewerState | null = null;
 
+const MAIN_CONTENT_BASE_CLASSES = [
+    'flex-1',
+    'overflow-y-auto',
+    'flex',
+    'justify-center',
+    'transition-colors',
+    'duration-300',
+    'bg-gray-900',
+    'relative',
+    '[&::-webkit-scrollbar]:hidden',
+    '[-ms-overflow-style:none]',
+    'scrollbar-none',
+];
+
+function setMainContentMode(isMarkdown: boolean) {
+    DOM.mainContentNode.classList.add(...MAIN_CONTENT_BASE_CLASSES);
+    DOM.mainContentNode.classList.toggle('pt-8', isMarkdown);
+    DOM.mainContentNode.classList.toggle('px-8', isMarkdown);
+    DOM.mainContentNode.classList.toggle('pb-20', isMarkdown);
+}
+
 export function setFileViewerState(documentId: string, state: StoredViewerState | null) {
     currentViewerIdentity = documentId;
     currentViewerState = state;
@@ -88,12 +109,11 @@ export async function renderFileContent(content: FileResponse) {
 
         const html = renderMarkdownWithCallouts(content.content || '', content.path || '');
         setCurrentFileName(content.name);
-        toggleSidebar('closed');
+        if (!reopening) toggleSidebar('closed');
         if (DOM.sidebarTabs) DOM.sidebarTabs.classList.add('hidden');
         DOM.sidebarPreviews.innerHTML = '';
         DOM.sidebarSections.innerHTML = '';
-        DOM.mainContentNode.className =
-            'flex-1 overflow-y-auto flex justify-center bg-gray-900 pt-8 px-8 pb-20 transition-colors duration-300';
+        setMainContentMode(true);
         DOM.mainContentNode.innerHTML = `
             <div class="w-full max-w-4xl mx-auto self-start">
                 <div class="bg-gray-800 p-8 md:p-12 rounded-xl shadow-lg border border-gray-700">
@@ -119,6 +139,7 @@ export async function renderFileContent(content: FileResponse) {
 
     if (type !== 'pdf') return;
 
+    setMainContentMode(false);
     const superseded = activeLoad;
     resetPdfState(reopening);
     if (DOM.pdfTools) DOM.pdfTools.classList.remove('hidden');
