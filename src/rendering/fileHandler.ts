@@ -109,7 +109,7 @@ export async function renderFileContent(content: FileResponse) {
 
         const html = renderMarkdownWithCallouts(content.content || '', content.path || '');
         setCurrentFileName(content.name);
-        toggleSidebar('closed');
+        if (!reopening) toggleSidebar('closed');
         if (DOM.sidebarTabs) DOM.sidebarTabs.classList.add('hidden');
         DOM.sidebarPreviews.innerHTML = '';
         DOM.sidebarSections.innerHTML = '';
