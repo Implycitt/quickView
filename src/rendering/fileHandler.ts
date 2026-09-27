@@ -243,16 +243,33 @@ function updateMarkdownArticle(article: HTMLElement, html: string) {
     morphChildren(article, template.content);
 }
 
-const imagesWithFallbacks = new WeakSet<HTMLImageElement>();
+const imageFallbackListeners = new WeakMap<HTMLImageElement, { sourceKey: string; listener: () => void }>();
+
+function imageSourceKey(img: HTMLImageElement): string {
+    return JSON.stringify([img.getAttribute('src'), img.getAttribute('srcset'), img.getAttribute('sizes')]);
+}
+
+function imageDisplayName(img: HTMLImageElement): string {
+    try {
+        const src = img.currentSrc || img.getAttribute('src') || '';
+        const url = new URL(src, document.baseURI);
+        const name = decodeURIComponent(url.pathname.split('/').pop() || 'image');
+        return img.getAttribute('alt') || name;
+    } catch {
+        return img.getAttribute('alt') || img.getAttribute('src') || 'image';
+    }
+}
 
 function attachImageFallbacks(root: HTMLElement) {
     root.querySelectorAll('img').forEach((img) => {
-        if (imagesWithFallbacks.has(img)) return;
-        imagesWithFallbacks.add(img);
+        const sourceKey = imageSourceKey(img);
+        const existing = imageFallbackListeners.get(img);
+        if (existing?.sourceKey === sourceKey) return;
+        if (existing) img.removeEventListener('error', existing.listener);
+
         const replaceWithPlaceholder = () => {
-            const src = img.getAttribute('src') || '';
-            const name = decodeURIComponent(src.split('/').pop() || 'image');
-            const alt = img.getAttribute('alt') || name;
+            if (!img.isConnected || img.naturalWidth > 0 || imageSourceKey(img) !== sourceKey) return;
+            const alt = imageDisplayName(img);
             const placeholder = document.createElement('span');
             placeholder.className = 'md-img-placeholder';
             placeholder.setAttribute('role', 'img');
@@ -278,11 +295,9 @@ function attachImageFallbacks(root: HTMLElement) {
             img.replaceWith(placeholder);
         };
 
-        if (img.complete) {
-            if (img.naturalWidth === 0) replaceWithPlaceholder();
-        } else {
-            img.addEventListener('error', replaceWithPlaceholder, { once: true });
-        }
+        // Let the browser finish resolving the URL before deciding the image failed.
+        imageFallbackListeners.set(img, { sourceKey, listener: replaceWithPlaceholder });
+        img.addEventListener('error', replaceWithPlaceholder, { once: true });
     });
 }
 

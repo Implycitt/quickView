@@ -1,12 +1,16 @@
 process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = 'true';
 
-import { app, BrowserWindow, ipcMain, dialog, Menu, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, Menu, shell, protocol, net } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+protocol.registerSchemesAsPrivileged([
+    { scheme: 'quickview-asset', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
+]);
 
 type ActiveWatcher = {
     sender: Electron.WebContents;
@@ -18,6 +22,7 @@ type ActiveWatcher = {
 
 let activeWatchedPath: string | null = null;
 let activeWatcher: ActiveWatcher | null = null;
+const IMAGE_EXTENSIONS = new Set(['.avif', '.bmp', '.gif', '.ico', '.jpeg', '.jpg', '.png', '.svg', '.webp']);
 let launchPathDelivered = false;
 const useCustomTitleBar = process.platform === 'linux';
 
@@ -242,6 +247,31 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+    protocol.handle('quickview-asset', async (request) => {
+        try {
+            const requestUrl = new URL(request.url);
+            if (requestUrl.hostname !== 'media' || requestUrl.pathname !== '/') {
+                return new Response('Not found', { status: 404 });
+            }
+
+            const requestedPath = requestUrl.searchParams.get('path');
+            if (!requestedPath || !path.isAbsolute(requestedPath)) {
+                return new Response('Invalid media path', { status: 400 });
+            }
+            if (!IMAGE_EXTENSIONS.has(path.extname(requestedPath).toLowerCase())) {
+                return new Response('Unsupported media type', { status: 415 });
+            }
+
+            const resolvedPath = await fs.promises.realpath(requestedPath);
+            const stats = await fs.promises.stat(resolvedPath);
+            if (!stats.isFile()) return new Response('Media not found', { status: 404 });
+            await fs.promises.access(resolvedPath, fs.constants.R_OK);
+            return await net.fetch(pathToFileURL(resolvedPath).href);
+        } catch {
+            return new Response('Media not found', { status: 404 });
+        }
+    });
+
     Menu.setApplicationMenu(null);
     if (useCustomTitleBar && app.isPackaged) {
         app.setDesktopName('quickview.desktop');
