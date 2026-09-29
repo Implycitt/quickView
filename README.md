@@ -47,4 +47,4 @@ Alternatively, you can use the project by downloading the latest [release](https
 
 ## Roadmap
 
-- [ ] Add HTML viewing support
+- [ ] HTML support
