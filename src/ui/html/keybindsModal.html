@@ -1,0 +1,132 @@
+<div
+    id="keybinds-modal"
+    class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-md transition-opacity"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="keybinds-title"
+>
+    <div
+        class="max-h-[85vh] w-96 max-w-[90%] overflow-y-auto rounded-lg border border-gray-700 bg-gray-800 p-6 shadow-xl"
+    >
+        <div class="flex justify-between items-center mb-4 border-b border-gray-700 pb-2">
+            <h2 id="keybinds-title" class="text-xl font-bold text-gray-100">Keyboard shortcuts</h2>
+            <button
+                id="close-keybinds"
+                type="button"
+                aria-label="Close shortcuts"
+                class="text-gray-400 hover:text-lavender-400 text-2xl leading-none"
+            >
+                &times;
+            </button>
+        </div>
+        <div class="mb-4 rounded-md border border-gray-700 bg-gray-900/70 p-3">
+            <div class="mb-3 flex items-center justify-between gap-3">
+                <div>
+                    <h3 class="text-sm font-semibold text-gray-100">Color theme</h3>
+                    <p class="mt-1 text-xs text-gray-400">Choose a palette for the viewer.</p>
+                </div>
+                <button
+                    id="open-theme-picker"
+                    type="button"
+                    class="theme-picker-trigger"
+                    aria-haspopup="dialog"
+                    aria-controls="theme-picker-modal"
+                >
+                    Choose theme
+                </button>
+            </div>
+            <p id="color-scheme-status" class="theme-picker-status" aria-live="polite"></p>
+            <label for="free-scroll-amount" class="mb-2 block text-xs text-gray-400">Free scroll amount</label>
+            <input
+                id="free-scroll-amount"
+                type="range"
+                min="60"
+                max="720"
+                step="30"
+                value="240"
+                aria-label="Free-mode scroll amount"
+                class="w-full cursor-pointer accent-lavender-400"
+            />
+        </div>
+        <ul class="space-y-3 text-sm text-gray-300">
+            <li class="flex justify-between items-center">
+                <span>Toggle Scroll Mode</span
+                ><kbd class="bg-gray-900 border border-gray-600 px-2 py-1 rounded font-mono">M</kbd>
+            </li>
+            <li class="flex justify-between items-center">
+                <span>Toggle Sidebar</span
+                ><kbd class="bg-gray-900 border border-gray-600 px-2 py-1 rounded font-mono">S</kbd>
+            </li>
+            <li class="flex justify-between items-center">
+                <span>Toggle Sections/Previews</span
+                ><kbd class="bg-gray-900 border border-gray-600 px-2 py-1 rounded font-mono">O</kbd>
+            </li>
+            <li class="flex justify-between items-center">
+                <span>Zoom In</span><kbd class="bg-gray-900 border border-gray-600 px-2 py-1 rounded font-mono">Z</kbd>
+            </li>
+            <li class="flex justify-between items-center">
+                <span>Zoom Out</span><kbd class="bg-gray-900 border border-gray-600 px-2 py-1 rounded font-mono">X</kbd>
+            </li>
+            <li class="flex justify-between items-center">
+                <span>Open File</span
+                ><kbd class="bg-gray-900 border border-gray-600 px-2 py-1 rounded font-mono">F</kbd>
+            </li>
+            <li class="flex justify-between items-center">
+                <span>Jump to Page</span
+                ><kbd class="bg-gray-900 border border-gray-600 px-2 py-1 rounded font-mono">G</kbd>
+            </li>
+            <li class="flex justify-between items-center">
+                <span>Scroll Down</span
+                ><kbd class="bg-gray-900 border border-gray-600 px-2 py-1 rounded font-mono">J / &darr;</kbd>
+            </li>
+            <li class="flex justify-between items-center">
+                <span>Scroll Up</span
+                ><kbd class="bg-gray-900 border border-gray-600 px-2 py-1 rounded font-mono">K / &uarr;</kbd>
+            </li>
+            <li class="flex justify-between items-center">
+                <span>Show Keybinds</span
+                ><kbd class="bg-gray-900 border border-gray-600 px-2 py-1 rounded font-mono">/</kbd>
+            </li>
+            <li class="flex justify-between items-center">
+                <span>Open color themes</span
+                ><kbd class="bg-gray-900 border border-gray-600 px-2 py-1 rounded font-mono">T</kbd>
+            </li>
+            <li class="flex justify-between items-center">
+                <span>Search Document (fuzzy)</span
+                ><kbd class="bg-gray-900 border border-gray-600 px-2 py-1 rounded font-mono">;</kbd>
+            </li>
+            <li class="flex justify-between items-center">
+                <span>Toggle Sidebar Follow</span
+                ><kbd class="bg-gray-900 border border-gray-600 px-2 py-1 rounded font-mono">L</kbd>
+            </li>
+        </ul>
+    </div>
+</div>
+<dialog id="theme-picker-modal" aria-labelledby="theme-picker-title" aria-describedby="theme-picker-description">
+    <section class="theme-picker-panel">
+        <header class="theme-picker-heading">
+            <div>
+                <h2 id="theme-picker-title">Choose a color theme</h2>
+                <p id="theme-picker-description">Pick a palette for the viewer interface.</p>
+            </div>
+            <button id="close-theme-picker" type="button" class="theme-picker-close" aria-label="Close theme picker">
+                &times;
+            </button>
+        </header>
+        <div
+            id="color-scheme-options"
+            class="theme-picker-options"
+            role="radiogroup"
+            aria-label="Available color themes"
+        >
+            <p class="theme-picker-empty">Loading themes…</p>
+        </div>
+        <footer class="theme-picker-footer">
+            <span id="theme-picker-file-path" class="theme-picker-file-path"></span>
+            <div>
+                <button id="reload-color-schemes" type="button" class="theme-picker-secondary">Reload palettes</button>
+                <button id="edit-color-schemes" type="button" class="theme-picker-secondary">Edit colors.ini</button>
+            </div>
+        </footer>
+    </section>
+</dialog>

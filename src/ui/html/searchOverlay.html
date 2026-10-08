@@ -1,0 +1,22 @@
+<div id="search-overlay" class="hidden fixed inset-x-0 top-0 z-50 flex justify-center pt-16 pointer-events-none">
+    <div
+        class="pointer-events-auto w-full max-w-lg mx-4 bg-gray-800/95 backdrop-blur-md border border-gray-700 rounded-lg shadow-2xl overflow-hidden"
+    >
+        <div class="flex items-center gap-3 px-3 py-2 border-b border-gray-700">
+            <span class="text-lavender-400 font-bold font-mono text-sm">;</span>
+            <input
+                id="search-input"
+                type="text"
+                placeholder="Fuzzy search document…"
+                class="flex-1 bg-transparent outline-none text-sm text-gray-100 placeholder:text-gray-500"
+                autocomplete="off"
+                spellcheck="false"
+            />
+            <span id="search-count" class="text-xs text-gray-500 whitespace-nowrap"></span>
+        </div>
+        <div
+            id="search-results"
+            class="max-h-52 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] scrollbar-none"
+        ></div>
+    </div>
+</div>

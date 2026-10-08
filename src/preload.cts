@@ -2,6 +2,8 @@ import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
 
 contextBridge.exposeInMainWorld('electronAPI', {
     platform: typeof process === 'undefined' ? 'unknown' : process.platform,
+    getColorSchemes: () => ipcRenderer.invoke('preferences:get-color-schemes'),
+    openColorSchemes: () => ipcRenderer.invoke('preferences:open-color-schemes'),
     pickAndReadFile: () => ipcRenderer.invoke('file:pick-and-read'),
     readFile: (path: string) => ipcRenderer.invoke('file:read', path),
     getLaunchPath: () => ipcRenderer.invoke('file:get-launch-path'),

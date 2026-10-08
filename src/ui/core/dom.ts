@@ -22,28 +22,34 @@ export const DOM = {} as {
     closeKeybindsBtn: HTMLButtonElement;
 };
 
+function requireElement<T extends HTMLElement>(id: string): T {
+    const element = document.getElementById(id);
+    if (!element) throw new Error(`QuickView shell is missing required element #${id}.`);
+    return element as T;
+}
+
 export function initDOM() {
-    DOM.sidebar = document.getElementById('sidebar') as HTMLElement;
-    DOM.sidebarPreviews = document.getElementById('sidebar-previews') as HTMLElement;
-    DOM.sidebarSections = document.getElementById('sidebar-sections') as HTMLElement;
-    DOM.sidebarTabs = document.getElementById('sidebar-tabs') as HTMLElement;
-    DOM.tabPreviewsBtn = document.getElementById('tab-previews') as HTMLButtonElement;
-    DOM.tabSectionsBtn = document.getElementById('tab-sections') as HTMLButtonElement;
-    DOM.sidebarFollowBtn = document.getElementById('sidebar-follow-btn') as HTMLButtonElement;
-    DOM.sidebarToggle = document.getElementById('sidebar-toggle') as HTMLButtonElement;
-    DOM.sidebarResizer = document.getElementById('sidebar-resizer') as HTMLElement;
-    DOM.mainContentNode = document.getElementById('main-content') as HTMLElement;
-    DOM.pdfTools = document.getElementById('pdf-tools') as HTMLElement;
-    DOM.toggleScrollModeBtn = document.getElementById('toggle-scroll-mode') as HTMLButtonElement;
-    DOM.zoomInBtn = document.getElementById('zoom-in') as HTMLButtonElement;
-    DOM.zoomOutBtn = document.getElementById('zoom-out') as HTMLButtonElement;
-    DOM.zoomLevelSpan = document.getElementById('zoom-level') as HTMLInputElement;
-    DOM.pageCounter = document.getElementById('page-counter') as HTMLInputElement;
-    DOM.pageTotal = document.getElementById('page-total') as HTMLSpanElement;
-    DOM.breadcrumb = document.getElementById('breadcrumb') as HTMLSpanElement;
-    DOM.keybindsToggleBtn = document.getElementById('keybinds-toggle') as HTMLButtonElement;
-    DOM.keybindsModal = document.getElementById('keybinds-modal') as HTMLElement;
-    DOM.closeKeybindsBtn = document.getElementById('close-keybinds') as HTMLButtonElement;
+    DOM.sidebar = requireElement('sidebar');
+    DOM.sidebarPreviews = requireElement('sidebar-previews');
+    DOM.sidebarSections = requireElement('sidebar-sections');
+    DOM.sidebarTabs = requireElement('sidebar-tabs');
+    DOM.tabPreviewsBtn = requireElement('tab-previews');
+    DOM.tabSectionsBtn = requireElement('tab-sections');
+    DOM.sidebarFollowBtn = requireElement('sidebar-follow-btn');
+    DOM.sidebarToggle = requireElement('sidebar-toggle');
+    DOM.sidebarResizer = requireElement('sidebar-resizer');
+    DOM.mainContentNode = requireElement('main-content');
+    DOM.pdfTools = requireElement('pdf-tools');
+    DOM.toggleScrollModeBtn = requireElement('toggle-scroll-mode');
+    DOM.zoomInBtn = requireElement('zoom-in');
+    DOM.zoomOutBtn = requireElement('zoom-out');
+    DOM.zoomLevelSpan = requireElement('zoom-level');
+    DOM.pageCounter = requireElement('page-counter');
+    DOM.pageTotal = requireElement('page-total');
+    DOM.breadcrumb = requireElement('breadcrumb');
+    DOM.keybindsToggleBtn = requireElement('keybinds-toggle');
+    DOM.keybindsModal = requireElement('keybinds-modal');
+    DOM.closeKeybindsBtn = requireElement('close-keybinds');
 }
 
 let savedSidebarWidth = '280px';
@@ -52,14 +58,15 @@ export function getSavedSidebarWidth(): number {
     return Number.isFinite(width) && width > 0 ? width : 280;
 }
 
+export function getSidebarTargetWidth(): number {
+    const width = parseFloat(DOM.sidebar?.style.width || savedSidebarWidth);
+    return Number.isFinite(width) && width > 0 ? width : getSavedSidebarWidth();
+}
+
 export function setSavedSidebarWidth(width: number) {
     if (!Number.isFinite(width)) return;
     savedSidebarWidth = `${Math.max(150, Math.min(600, width))}px`;
     if (DOM.sidebar && DOM.sidebar.style.width !== '0px') DOM.sidebar.style.width = savedSidebarWidth;
-}
-
-export function isSidebarOpen(): boolean {
-    return !!DOM.sidebar && DOM.sidebar.style.width !== '0px';
 }
 
 export function toggleSidebar(forceState?: 'open' | 'closed') {
@@ -88,6 +95,7 @@ export function setSidebarFollowLabel(follow: boolean) {
     locked?.classList.toggle('hidden', !follow);
     unlocked?.classList.toggle('hidden', follow);
     DOM.sidebarFollowBtn.classList.toggle('sidebar-follow-active', follow);
+    DOM.sidebarFollowBtn.setAttribute('aria-pressed', String(follow));
 }
 
 export function setSidebarTab(tab: 'previews' | 'sections') {
@@ -97,14 +105,9 @@ export function setSidebarTab(tab: 'previews' | 'sections') {
     DOM.sidebarSections.classList.toggle('hidden', previews);
     DOM.tabPreviewsBtn.classList.toggle('sidebar-tab-active', previews);
     DOM.tabSectionsBtn.classList.toggle('sidebar-tab-active', !previews);
+    DOM.tabPreviewsBtn.setAttribute('aria-selected', String(previews));
+    DOM.tabSectionsBtn.setAttribute('aria-selected', String(!previews));
     window.dispatchEvent(new Event('qv:sidebar-tab-changed'));
-}
-
-export function getSidebarTargetWidth(): number {
-    const raw = DOM.sidebar?.style.width || savedSidebarWidth;
-    const w = parseFloat(raw);
-    if (!Number.isFinite(w) || w <= 0) return parseFloat(savedSidebarWidth) || 280;
-    return w;
 }
 
 export function updateScrollModeClasses(isSnapMode: boolean) {
@@ -114,17 +117,8 @@ export function updateScrollModeClasses(isSnapMode: boolean) {
     DOM.toggleScrollModeBtn.innerText = `Mode: ${isSnapMode ? 'Snap' : 'Free'}`;
     if (!scrollContainer) return;
 
-    if (isSnapMode) {
-        scrollContainer.classList.add('snap-y', 'snap-mandatory');
-        scrollContainer
-            .querySelectorAll<HTMLElement>('.pdf-page-container')
-            .forEach((page) => page.classList.add('snap-center'));
-    } else {
-        scrollContainer.classList.remove('snap-y', 'snap-mandatory');
-        scrollContainer
-            .querySelectorAll<HTMLElement>('.pdf-page-container')
-            .forEach((page) => page.classList.remove('snap-center'));
-    }
+    scrollContainer.classList.toggle('snap-y', isSnapMode);
+    scrollContainer.classList.toggle('snap-mandatory', isSnapMode);
 }
 
 export function initSidebarResizer() {
@@ -134,6 +128,17 @@ export function initSidebarResizer() {
     if (!sidebar || !resizer) return;
 
     let isResizing = false;
+
+    resizer.addEventListener('keydown', (event: KeyboardEvent) => {
+        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+        event.preventDefault();
+        const direction = event.key === 'ArrowRight' ? 1 : -1;
+        const current = parseFloat(sidebar.style.width) || getSavedSidebarWidth();
+        setSavedSidebarWidth(current + direction * (event.shiftKey ? 40 : 16));
+        resizer.setAttribute('aria-valuenow', String(Math.round(getSavedSidebarWidth())));
+        window.dispatchEvent(new Event('qv:sidebar-resized'));
+        window.dispatchEvent(new Event('resize'));
+    });
 
     resizer.addEventListener('mousedown', () => {
         isResizing = true;
@@ -149,6 +154,7 @@ export function initSidebarResizer() {
 
         if (newWidth > 150 && newWidth < 600) {
             sidebar.style.width = `${newWidth}px`;
+            resizer.setAttribute('aria-valuenow', String(Math.round(newWidth)));
             window.dispatchEvent(new Event('qv:sidebar-resized'));
         }
     });
@@ -160,6 +166,7 @@ export function initSidebarResizer() {
             document.body.style.userSelect = '';
             sidebar.classList.add('transition-[width]', 'duration-300');
             savedSidebarWidth = sidebar.style.width || savedSidebarWidth;
+            resizer.setAttribute('aria-valuenow', String(Math.round(getSavedSidebarWidth())));
             window.dispatchEvent(new Event('qv:sidebar-width-changed'));
             window.dispatchEvent(new Event('resize'));
         }

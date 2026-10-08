@@ -1,14 +1,6 @@
-import { defineConfig, type Plugin } from 'vite';
+import { defineConfig } from 'vite';
 import electron from 'vite-plugin-electron/simple';
 import tailwindcss from '@tailwindcss/vite';
-
-const ignoreMarkdownHmr: Plugin = {
-    name: 'quickview-ignore-markdown-hmr',
-    enforce: 'pre',
-    hotUpdate({ file }) {
-        if (file.toLowerCase().endsWith('.md')) return [];
-    },
-};
 
 export default defineConfig({
     server: {
@@ -22,7 +14,6 @@ export default defineConfig({
         },
     },
     plugins: [
-        ignoreMarkdownHmr,
         tailwindcss(),
         electron({
             main: {

@@ -1,0 +1,70 @@
+.pdf-link-layer {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 2;
+}
+
+.pdf-link {
+    position: absolute;
+    pointer-events: auto;
+    cursor: pointer;
+    border-radius: 2px;
+    transition: background-color 0.1s;
+}
+
+.pdf-link:hover {
+    background: color-mix(in srgb, var(--qv-accent) 18%, transparent);
+    box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--qv-accent) 60%, transparent);
+}
+
+.hiddenCanvasElement {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 0;
+    height: 0;
+    display: none;
+}
+
+.text-layer {
+    position: absolute;
+    text-align: initial;
+    inset: 0;
+    overflow: hidden;
+    line-height: 1;
+    z-index: 1;
+    -webkit-text-size-adjust: none;
+    text-size-adjust: none;
+    forced-color-adjust: none;
+    transform-origin: 0 0;
+}
+
+.text-layer > :is(span, br) {
+    position: absolute;
+    white-space: pre;
+    color: transparent;
+    cursor: text;
+    transform-origin: 0% 0%;
+    -webkit-user-select: text;
+    user-select: text;
+}
+
+.text-layer > span::selection {
+    color: transparent;
+    background: color-mix(in srgb, var(--qv-accent) 45%, transparent);
+}
+
+.text-layer > br::selection {
+    background: transparent;
+}
+
+.text-layer .pdf-hl {
+    background: color-mix(in srgb, var(--qv-accent) 45%, transparent);
+    border-radius: 2px;
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--qv-accent) 30%, transparent);
+}
+
+.text-layer > span > .pdf-hl {
+    display: inline-block;
+}

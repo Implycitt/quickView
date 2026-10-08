@@ -30,11 +30,13 @@ export default tseslint.config(
     },
     {
         files: [
-            'src/pdfjs.ts',
             'src/preload.cts',
-            'src/rendering/fileHandler.ts',
-            'src/rendering/pdfRenderer.ts',
-            'src/rendering/pdfSearch.ts',
+            'src/rendering/**/*.ts',
+            'src/ui/app/**/*.ts',
+            'src/ui/keyboard/**/*.ts',
+            'src/ui/window/**/*.ts',
+            'src/main/**/*.ts',
+            'src/viewer/**/*.ts',
             'src/types/types.d.ts',
         ],
         rules: {

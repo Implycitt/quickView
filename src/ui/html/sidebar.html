@@ -1,0 +1,85 @@
+<aside
+    id="sidebar"
+    class="h-full shrink-0 overflow-y-auto bg-gray-800 transition-[width] duration-300 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] scrollbar-none"
+    style="width: 0px"
+>
+    <div
+        id="sidebar-tabs"
+        role="tablist"
+        aria-label="Document navigation"
+        class="sticky top-0 z-10 hidden flex gap-1 bg-gray-800/95 p-2 backdrop-blur"
+    >
+        <button
+            id="tab-previews"
+            type="button"
+            role="tab"
+            aria-controls="sidebar-previews"
+            aria-selected="true"
+            class="sidebar-tab sidebar-tab-active"
+        >
+            Previews
+        </button>
+        <button
+            id="tab-sections"
+            type="button"
+            role="tab"
+            aria-controls="sidebar-sections"
+            aria-selected="false"
+            class="sidebar-tab"
+        >
+            Sections
+        </button>
+        <span class="mx-1 w-px shrink-0 bg-gray-700"></span>
+        <button
+            id="sidebar-follow-btn"
+            type="button"
+            aria-label="Follow current page in the sidebar"
+            aria-pressed="true"
+            title="Toggle sidebar follow (L)"
+            class="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-800 hover:text-lavender-400"
+        >
+            <svg
+                id="follow-icon-locked"
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-3.5 w-3.5"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+            >
+                <path
+                    fill-rule="evenodd"
+                    d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z"
+                    clip-rule="evenodd"
+                />
+            </svg>
+            <svg
+                id="follow-icon-unlocked"
+                xmlns="http://www.w3.org/2000/svg"
+                class="hidden h-3.5 w-3.5"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.75"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+            >
+                <path
+                    d="M7 10V7a5 5 0 0 1 9.9-.9M5 10h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2Z"
+                />
+                <path d="M12 14v3" />
+            </svg>
+        </button>
+    </div>
+    <div id="sidebar-previews" role="tabpanel" aria-labelledby="tab-previews" class="w-full p-4"></div>
+    <div id="sidebar-sections" role="tabpanel" aria-labelledby="tab-sections" class="hidden w-full p-4"></div>
+</aside>
+<div
+    id="sidebar-resizer"
+    role="separator"
+    aria-orientation="vertical"
+    aria-valuemin="150"
+    aria-valuemax="600"
+    aria-valuenow="280"
+    tabindex="0"
+    aria-label="Resize document sidebar"
+    class="sidebar-resizer z-10 w-1 shrink-0 cursor-col-resize bg-gray-700 transition-colors hover:bg-lavender-400"
+></div>

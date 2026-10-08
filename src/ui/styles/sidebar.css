@@ -1,0 +1,99 @@
+.thumb-active {
+    border-color: var(--color-lavender-400);
+    box-shadow:
+        0 0 0 1px var(--color-lavender-400),
+        0 0 14px color-mix(in srgb, var(--qv-accent) 35%, transparent);
+}
+
+.hover\:border-lavender-400:hover {
+    border-color: var(--color-lavender-400);
+}
+
+.sidebar-tab {
+    flex: 1;
+    padding: 0.35rem 0.5rem;
+    border-radius: 0;
+    font-size: 0.76rem;
+    font-weight: 550;
+    text-align: center;
+    color: var(--color-gray-400);
+    border: 1px solid transparent;
+    border-bottom-width: 2px;
+    cursor: pointer;
+    transition:
+        color 0.15s,
+        background-color 0.15s,
+        border-color 0.15s;
+}
+
+.sidebar-tab:hover {
+    color: var(--color-gray-200);
+}
+
+.sidebar-tab-active {
+    color: var(--qv-accent);
+    background: color-mix(in srgb, var(--qv-accent) 8%, transparent);
+    border-color: transparent;
+    border-bottom-color: var(--qv-accent);
+}
+
+.sidebar-follow-active {
+    color: var(--qv-accent);
+}
+
+.outline-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.35rem;
+    padding-top: 0.3rem;
+    padding-right: 0.4rem;
+    padding-bottom: 0.3rem;
+    border-radius: 0.3rem;
+    font-size: 0.78rem;
+    line-height: 1.35;
+    color: var(--color-gray-300);
+    cursor: pointer;
+    transition:
+        color 0.12s,
+        background-color 0.12s;
+}
+
+.outline-item:hover {
+    color: var(--color-gray-100);
+    background: color-mix(in srgb, var(--qv-accent) 7%, transparent);
+}
+
+.outline-caret {
+    flex-shrink: 0;
+    width: 0.9rem;
+    text-align: center;
+    color: var(--color-gray-500);
+    font-size: 0.7rem;
+    transform: rotate(90deg);
+    transition: transform 0.15s;
+    cursor: pointer;
+}
+
+.outline-caret-placeholder {
+    cursor: default;
+}
+
+.outline-collapsed .outline-caret {
+    transform: rotate(0deg);
+}
+
+.outline-children {
+    padding-left: 0.9rem;
+    margin-left: 0.55rem;
+    border-left: 1px dashed color-mix(in srgb, var(--qv-muted) 40%, transparent);
+}
+
+.outline-active {
+    color: var(--qv-accent);
+    background: color-mix(in srgb, var(--qv-accent) 9%, transparent);
+    box-shadow: inset 2px 0 0 var(--qv-accent);
+}
+
+.outline-active .outline-caret {
+    color: var(--qv-accent);
+}

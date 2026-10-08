@@ -1,0 +1,35 @@
+@plugin '@tailwindcss/typography';
+
+:root {
+    --qv-background: #191b22;
+    --qv-panel: #232630;
+    --qv-stage: #2c3039;
+    --qv-border: #3a3f4b;
+    --qv-text: #eceef3;
+    --qv-muted: #adb4c1;
+    --qv-accent: #b6a2ff;
+    --qv-action: #7559d2;
+    --qv-action-text: #ffffff;
+}
+
+@theme {
+    --font-sans:
+        -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', 'Noto Sans', Arial, sans-serif,
+        'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+
+    --color-red-400: oklch(70.4% 0.191 22.216);
+    --color-red-500: oklch(63.7% 0.237 25.331);
+    --color-gray-100: #eceef3;
+    --color-gray-200: #dadde5;
+    --color-gray-300: #c6cbd5;
+    --color-gray-400: #adb4c1;
+    --color-gray-500: #868e9d;
+    --color-gray-600: #3a3f4b;
+    --color-gray-700: #3a3f4b;
+    --color-gray-800: #232630;
+    --color-gray-900: #191b22;
+    --color-lavender-400: #b6a2ff;
+    --color-lavender-500: #7559d2;
+    --color-lavender-600: #7559d2;
+}

@@ -1,0 +1,76 @@
+#main-content {
+    background-color: var(--qv-stage);
+    scrollbar-width: none;
+}
+
+.qv-document-prose.prose-invert {
+    --tw-prose-body: var(--qv-text);
+    --tw-prose-headings: var(--qv-text);
+    --tw-prose-lead: var(--qv-muted);
+    --tw-prose-links: var(--qv-accent);
+    --tw-prose-bold: var(--qv-text);
+    --tw-prose-counters: var(--qv-muted);
+    --tw-prose-bullets: var(--qv-muted);
+    --tw-prose-hr: var(--qv-border);
+    --tw-prose-quotes: var(--qv-text);
+    --tw-prose-quote-borders: var(--qv-border);
+    --tw-prose-captions: var(--qv-muted);
+    --tw-prose-code: var(--qv-text);
+    --tw-prose-pre-code: var(--qv-text);
+    --tw-prose-pre-bg: var(--qv-background);
+    --tw-prose-th-borders: var(--qv-border);
+    --tw-prose-invert-body: var(--qv-text);
+    --tw-prose-invert-headings: var(--qv-text);
+    --tw-prose-invert-lead: var(--qv-muted);
+    --tw-prose-invert-links: var(--qv-accent);
+    --tw-prose-invert-bold: var(--qv-text);
+    --tw-prose-invert-counters: var(--qv-muted);
+    --tw-prose-invert-bullets: var(--qv-muted);
+    --tw-prose-invert-hr: var(--qv-border);
+    --tw-prose-invert-quotes: var(--qv-text);
+    --tw-prose-invert-quote-borders: var(--qv-border);
+    --tw-prose-invert-captions: var(--qv-muted);
+    --tw-prose-invert-code: var(--qv-text);
+    --tw-prose-invert-pre-code: var(--qv-text);
+    --tw-prose-invert-pre-bg: var(--qv-background);
+    --tw-prose-invert-th-borders: var(--qv-border);
+    --tw-prose-invert-td-borders: var(--qv-border);
+}
+
+.qv-document-prose :is(blockquote, pre, table) {
+    border-color: var(--qv-border);
+}
+
+.qv-document-prose :not(pre) > code {
+    background-color: color-mix(in srgb, var(--qv-background) 82%, var(--qv-panel));
+    border-radius: 0.25rem;
+    padding: 0.1em 0.3em;
+}
+
+.prose img {
+    display: inline-block;
+    vertical-align: middle;
+    margin: 0.375rem 0.25rem;
+    border-radius: 0.375rem;
+}
+
+.md-img-placeholder {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    max-width: 100%;
+    margin: 0.375rem 0.25rem;
+    padding: 0.4rem 0.7rem;
+    border: 1px dashed var(--color-gray-600);
+    border-radius: 0.375rem;
+    background: color-mix(in srgb, var(--qv-background) 45%, transparent);
+    color: var(--color-gray-400);
+    font-size: 0.72rem;
+    font-family: var(--font-mono);
+    vertical-align: middle;
+}
+
+.md-img-placeholder-hint {
+    color: var(--color-gray-500);
+    font-style: italic;
+}
