@@ -64,12 +64,12 @@ export function createThumbnailRenderer(deps: ThumbnailRendererDependencies) {
         if (tops.length === 0) return 0;
         let low = 0;
         let high = tops.length - 1;
-        while (low < high) {
+        while (low <= high) {
             const middle = (low + high) >> 1;
-            if (tops[middle] < y) low = middle + 1;
-            else high = middle;
+            if (tops[middle] <= y) low = middle + 1;
+            else high = middle - 1;
         }
-        return low;
+        return Math.max(0, high);
     }
 
     function captureSidebarAnchor(): { page: number; fraction: number } | null {
@@ -130,13 +130,11 @@ export function createThumbnailRenderer(deps: ThumbnailRendererDependencies) {
         if (!center && !changed && activeThumb?.isConnected) return;
 
         activeThumb?.classList.remove('thumb-active');
-        const follow = forceFollow || shouldFollow();
-        activeThumb = follow
-            ? layout.ensureMounted(page, () => deps.jumpToPage(page))
-            : DOM.sidebarPreviews.querySelector<HTMLCanvasElement>(`[data-page-num="${page}"]`);
-        if (!activeThumb) return;
-        activeThumb.classList.add('thumb-active');
-        if ((changed || center) && follow) scrollThumbIntoView(activeThumb, true);
+        activeThumb = layout.ensureMounted(page, () => deps.jumpToPage(page));
+        activeThumb?.classList.add('thumb-active');
+        if ((changed || center) && (forceFollow || shouldFollow()) && activeThumb) {
+            scrollThumbIntoView(activeThumb, true);
+        }
     }
 
     function queueRender(page: number) {
@@ -238,7 +236,9 @@ export function createThumbnailRenderer(deps: ThumbnailRendererDependencies) {
         const sidebar = globalThis.document.getElementById('sidebar');
         const pdfDocument = deps.getDocument();
         if (!sidebar || !DOM.sidebarPreviews || !pdfDocument || !paneVisible()) return;
+        const anchor = captureSidebarAnchor();
         layout.rebuild();
+        if (anchor) sidebar.scrollTop = restoreSidebarAnchor(anchor);
         if (pdfDocument.numPages === 0) return;
         const paneScroll = Math.max(0, sidebar.scrollTop - paneOffsetInSidebar());
         const first = Math.max(0, indexAt(paneScroll) - 2);

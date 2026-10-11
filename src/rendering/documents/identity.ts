@@ -1,4 +1,8 @@
-export function documentIdentity(path: string | null | undefined, name: string, type: 'pdf' | 'markdown'): string {
+export function documentIdentity(
+    path: string | null | undefined,
+    name: string,
+    type: 'pdf' | 'markdown' | 'html',
+): string {
     return JSON.stringify([type, normalizePath(path || name)]);
 }
 

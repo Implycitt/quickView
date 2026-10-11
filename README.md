@@ -8,9 +8,9 @@
 
 </div>
 
-Hot reloading for PDF and markdown documents. QuickView is intended to be used along with the [qv command line tooling](https://github.com/Implycitt/tools/tree/main/qv). Instructions for downloading and using the tooling can be found in the linked repository.
+Hot reloading for PDF, Markdown, and HTML documents. QuickView is intended to be used along with the [qv command line tooling](https://github.com/Implycitt/tools/tree/main/qv). Instructions for downloading and using the tooling can be found in the linked repository.
 
-QuickView is to be used along with a text editor for creating or modifying documents that compile to PDF or markdown files. Primary use cases include github readmes or watching compiled LaTeX/Typst documents.
+QuickView is to be used along with a text editor for creating or modifying PDF, Markdown, or HTML files. Primary use cases include GitHub READMEs, local web pages, or watching compiled LaTeX/Typst documents.
 
 ![Demo](./assets/quickView.gif)
 
@@ -47,4 +47,4 @@ Alternatively, you can use the project by downloading the latest [release](https
 
 ## Roadmap
 
-- [ ] HTML support
+- [x] HTML support

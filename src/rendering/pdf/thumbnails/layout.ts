@@ -27,7 +27,7 @@ export function createThumbnailLayout(deps: ThumbnailDependencies): ThumbnailLay
         if (!doc || !pane) return;
         const total = doc.numPages;
         const targetWidth = deps.getSidebarTargetWidth();
-        if (!force && !dirty && tops.length === total && targetWidth === width) return;
+        if (!force && !dirty && tops.length === total && Math.abs(targetWidth - width) < 0.5) return;
         dirty = false;
         width = targetWidth;
         tops.length = 0;
@@ -49,7 +49,7 @@ export function createThumbnailLayout(deps: ThumbnailDependencies): ThumbnailLay
         if (!pane || !doc || page < 1 || page > doc.numPages) return null;
         const existing = pane.querySelector<HTMLCanvasElement>(`[data-page-num="${page}"]`);
         if (existing) return existing;
-        if (tops.length !== doc.numPages) rebuild();
+        if (tops.length !== doc.numPages || dirty || Math.abs(deps.getSidebarTargetWidth() - width) >= 0.5) rebuild();
         const canvas = document.createElement('canvas');
         canvas.className =
             'cursor-pointer border-2 border-transparent hover:border-lavender-400 transition-colors shadow-sm rounded bg-white';

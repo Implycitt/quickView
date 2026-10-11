@@ -19,7 +19,7 @@ import type { StoredViewerState } from '../../viewer/state.js';
 let activeLoad: PdfJsLoadingTask | null = null;
 
 function setPdfLayout() {
-    DOM.mainContentNode.classList.remove('pt-8', 'px-8', 'pb-20');
+    DOM.mainContentNode.classList.remove('pt-8', 'px-8', 'pb-20', 'qv-html-viewer');
 }
 
 export async function renderPdfDocument(

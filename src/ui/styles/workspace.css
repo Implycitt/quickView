@@ -2,6 +2,36 @@
     background: var(--qv-background);
 }
 
+.qv-html-viewer {
+    display: flex !important;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    overflow: hidden !important;
+    padding: clamp(0.75rem, 2.2vw, 1.75rem) !important;
+    background: var(--qv-stage);
+}
+
+.qv-html-frame {
+    position: relative;
+    inset: auto;
+    display: block;
+    flex: 1 1 auto;
+    width: min(100%, 88rem);
+    height: auto;
+    min-height: 0;
+    margin: 0 auto;
+    border: 1px solid var(--qv-border);
+    border-radius: 0.55rem;
+    background: var(--qv-panel);
+    box-shadow: 0 12px 32px color-mix(in srgb, var(--qv-background) 28%, transparent);
+}
+
+.qv-html-frame:focus-visible {
+    outline: 2px solid var(--qv-accent);
+    outline-offset: 3px;
+}
+
 #zoom-level:focus-visible,
 #page-counter:focus-visible,
 #sidebar-toggle:focus-visible,
@@ -344,6 +374,15 @@
 }
 
 @media (max-width: 560px) {
+    .qv-html-viewer {
+        padding: 0.5rem !important;
+    }
+
+    .qv-html-frame {
+        width: 100%;
+        border-radius: 0.35rem;
+    }
+
     .empty-state {
         align-items: center;
         gap: 1.5rem;

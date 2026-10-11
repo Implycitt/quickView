@@ -4,7 +4,8 @@ import type { FileResponse } from '../../types/types.d.ts';
 
 export async function readFilePayload(targetPath: string): Promise<FileResponse> {
     const fileName = path.basename(targetPath);
-    if (fileName.toLowerCase().endsWith('.md')) {
+    const extension = path.extname(fileName).toLowerCase();
+    if (extension === '.md' || extension === '.html' || extension === '.htm') {
         const content = await fs.promises.readFile(targetPath, 'utf-8');
         return { name: fileName, path: targetPath, content };
     }
@@ -18,9 +19,9 @@ export async function validateDocumentPath(targetPath: unknown): Promise<string>
         throw new Error('A valid absolute file path is required.');
     }
 
-    const fileName = path.basename(targetPath).toLowerCase();
-    if (!['.md', '.pdf'].some((extension) => fileName.endsWith(extension))) {
-        throw new Error('QuickView only opens Markdown and PDF documents.');
+    const extension = path.extname(targetPath).toLowerCase();
+    if (!['.md', '.pdf', '.html', '.htm'].includes(extension)) {
+        throw new Error('QuickView only opens Markdown, PDF, and HTML documents.');
     }
 
     await fs.promises.access(targetPath, fs.constants.R_OK);

@@ -6,7 +6,7 @@ import type { StoredViewerState } from '../../viewer/state.js';
 
 export interface ActiveViewerDocument {
     id: string;
-    type: 'pdf' | 'markdown';
+    type: 'pdf' | 'markdown' | 'html';
     ready: boolean;
     state: StoredViewerState | null;
 }
@@ -28,7 +28,16 @@ export function captureViewerState(active: ActiveViewerDocument): StoredViewerSt
         sidebarTab: DOM.sidebarSections?.classList.contains('hidden') ? 'previews' : 'sections',
         sidebarScrollTop: DOM.sidebar?.scrollTop ?? 0,
         ...(location ? { location } : {}),
-        ...(active.type === 'markdown' ? { markdownScrollTop: DOM.mainContentNode?.scrollTop ?? 0 } : {}),
+        ...(active.type === 'html'
+            ? {
+                  markdownScrollTop:
+                      DOM.mainContentNode?.querySelector<HTMLIFrameElement>('.qv-html-frame')?.contentWindow?.scrollY ??
+                      DOM.mainContentNode?.scrollTop ??
+                      0,
+              }
+            : active.type === 'markdown'
+              ? { markdownScrollTop: DOM.mainContentNode?.scrollTop ?? 0 }
+              : {}),
     };
     writeViewerState(active.id, state);
     return state;
@@ -49,6 +58,20 @@ export function restoreMarkdownViewerState(state: StoredViewerState) {
     DOM.mainContentNode.scrollTop = state.markdownScrollTop ?? 0;
 }
 
+export function restoreHtmlViewerState(state: StoredViewerState) {
+    restoreCommonViewerSettings(state);
+    const frame = DOM.mainContentNode.querySelector<HTMLIFrameElement>('.qv-html-frame');
+    if (!frame) return;
+    const scrollTop = state.markdownScrollTop ?? 0;
+    frame.dataset.restoreScrollTop = String(scrollTop);
+    const restoreScroll = () => {
+        frame.contentWindow?.scrollTo(0, scrollTop);
+        frame.removeAttribute('data-restore-scroll-top');
+    };
+    if (frame.contentDocument?.readyState === 'complete') restoreScroll();
+    else frame.addEventListener('load', restoreScroll, { once: true });
+}
+
 export function attachViewerStateListeners(scheduleSave: () => void, capture: () => StoredViewerState | null) {
     DOM.mainContentNode?.addEventListener('scroll', scheduleSave, { capture: true, passive: true });
     DOM.sidebar?.addEventListener('scroll', scheduleSave, { passive: true });
@@ -59,6 +82,7 @@ export function attachViewerStateListeners(scheduleSave: () => void, capture: ()
         if (document.visibilityState === 'hidden') capture();
     });
     for (const eventName of [
+        'qv:html-scroll',
         'qv:sidebar-toggled',
         'qv:sidebar-tab-changed',
         'qv:sidebar-width-changed',

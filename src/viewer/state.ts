@@ -1,4 +1,4 @@
-export type DocumentType = 'pdf' | 'markdown';
+export type DocumentType = 'pdf' | 'markdown' | 'html';
 export type ZoomMode = 'auto' | 'manual';
 export type SidebarTab = 'previews' | 'sections';
 
@@ -68,7 +68,7 @@ function isStoredViewerState(value: unknown): value is StoredViewerState {
     const state = value as Partial<StoredViewerState>;
     if (
         state.version !== 1 ||
-        (state.documentType !== 'pdf' && state.documentType !== 'markdown') ||
+        (state.documentType !== 'pdf' && state.documentType !== 'markdown' && state.documentType !== 'html') ||
         (state.zoomMode !== 'auto' && state.zoomMode !== 'manual') ||
         typeof state.isSnapMode !== 'boolean' ||
         typeof state.snapSuspended !== 'boolean' ||
@@ -100,7 +100,7 @@ function isStoredViewerState(value: unknown): value is StoredViewerState {
         );
     }
 
-    return isFiniteNumber(state.markdownScrollTop) && state.markdownScrollTop >= 0;
+    return state.documentType === 'html' || (isFiniteNumber(state.markdownScrollTop) && state.markdownScrollTop >= 0);
 }
 
 export function readViewerState(documentId: string): StoredViewerState | null {

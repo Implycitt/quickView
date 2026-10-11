@@ -3,6 +3,7 @@ import path from 'node:path';
 import { readFilePayload, validateDocumentPath } from '../documents/filePayload.js';
 import { watchDocument } from '../documents/fileWatcher.js';
 import { loadColorSchemes } from '../preferences/colorSchemes.js';
+import { setAllowedAssetRoot } from '../protocol/assetProtocol.js';
 
 export function registerIpcHandlers(launchPath: string | null) {
     let launchPathDelivered = false;
@@ -24,6 +25,7 @@ export function registerIpcHandlers(launchPath: string | null) {
     async function readAndWatchDocument(targetPath: string, sender: Electron.WebContents) {
         const validPath = await validateDocumentPath(targetPath);
         const payload = await readFilePayload(validPath);
+        await setAllowedAssetRoot(validPath);
         watchDocument(validPath, sender, () => readFilePayload(validPath));
         return payload;
     }
@@ -33,7 +35,7 @@ export function registerIpcHandlers(launchPath: string | null) {
     ipcMain.handle('file:pick-and-read', async (event) => {
         const { canceled, filePaths } = await dialog.showOpenDialog({
             properties: ['openFile'],
-            filters: [{ name: 'Documents', extensions: ['md', 'pdf'] }],
+            filters: [{ name: 'Documents', extensions: ['md', 'pdf', 'html', 'htm'] }],
         });
         if (canceled || filePaths.length === 0) return null;
 

@@ -3,6 +3,7 @@ import {
     attachViewerStateListeners as attachStateListeners,
     restoreCommonViewerSettings,
     restoreMarkdownViewerState,
+    restoreHtmlViewerState,
     captureViewerState as captureState,
 } from './viewerStateController.js';
 import { PdfState } from '../../rendering/pdf/state.js';
@@ -47,7 +48,12 @@ export function createDocumentController() {
     }
 
     async function openDocument(content: FileResponse) {
-        const type: DocumentType = content.name.toLowerCase().endsWith('.pdf') ? 'pdf' : 'markdown';
+        const lowerName = content.name.toLowerCase();
+        const type: DocumentType = lowerName.endsWith('.pdf')
+            ? 'pdf'
+            : lowerName.endsWith('.html') || lowerName.endsWith('.htm')
+              ? 'html'
+              : 'markdown';
         const incoming: ActiveDocument = {
             id: documentIdentity(content.path, content.name, type),
             type,
@@ -94,6 +100,17 @@ export function createDocumentController() {
             clearMdBreadcrumb();
             const rendered = await renderPdfDocument(content, viewerState, reopening, isStale);
             if (!rendered) return;
+        } else if (incoming.type === 'html') {
+            const { renderHtmlDocument } = await import('../../rendering/html/document.js');
+            if (isStale()) return;
+            const rendered = renderHtmlDocument(content, reopening, isStale, async (path) => {
+                try {
+                    await openDocument(await window.electronAPI.readFile(path));
+                } catch (error) {
+                    console.warn('Could not open linked HTML document:', error);
+                }
+            });
+            if (!rendered) return;
         } else {
             const { renderMarkdownDocument } = await import('../../rendering/markdown/document.js');
             if (isStale()) return;
@@ -107,8 +124,9 @@ export function createDocumentController() {
             restoreCommonViewerSettings(viewerState);
         } else if (incoming.type === 'pdf') {
             applyPdfViewerSettings({ isSnapMode: true, snapSuspended: false, sidebarFollow: true });
-        } else if (viewerState?.documentType === 'markdown') {
-            restoreMarkdownViewerState(viewerState);
+        } else if (viewerState?.documentType === incoming.type) {
+            if (incoming.type === 'html') restoreHtmlViewerState(viewerState);
+            else restoreMarkdownViewerState(viewerState);
         } else if (!sameDocument) {
             toggleSidebar('closed');
             DOM.sidebar.scrollTop = 0;

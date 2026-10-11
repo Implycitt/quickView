@@ -9,6 +9,7 @@ import type { FileResponse } from '../../types/types.d.ts';
 import type { StoredViewerState } from '../../viewer/state.js';
 
 function setMarkdownLayout() {
+    DOM.mainContentNode.classList.remove('qv-html-viewer');
     DOM.mainContentNode.classList.add('pt-8', 'px-8', 'pb-20');
 }
 
