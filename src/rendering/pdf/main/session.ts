@@ -29,9 +29,14 @@ interface PdfMainSessionDependencies {
 export function createPdfMainSession(deps: PdfMainSessionDependencies) {
     let viewerVersion = 0;
     let mainRenderInFlight: Promise<void> | null = null;
+    let finishMeasurementTimer: ReturnType<typeof setTimeout> | null = null;
 
     function resetViewer() {
         viewerVersion++;
+        if (finishMeasurementTimer) {
+            clearTimeout(finishMeasurementTimer);
+            finishMeasurementTimer = null;
+        }
         deps.mainPages.cancel();
         deps.mainPages.clear();
         const scroll = deps.layout.getScrollContainer();
@@ -45,6 +50,10 @@ export function createPdfMainSession(deps: PdfMainSessionDependencies) {
     async function runRenderAllMainPages() {
         const restore = deps.getPendingRestore() ?? deps.getSavedPosition();
         const version = ++viewerVersion;
+        if (finishMeasurementTimer) {
+            clearTimeout(finishMeasurementTimer);
+            finishMeasurementTimer = null;
+        }
         deps.mainPages.cancel();
         deps.mainPages.clear();
         deps.viewport.clearSettleTimer();
@@ -96,16 +105,25 @@ export function createPdfMainSession(deps: PdfMainSessionDependencies) {
         deps.layout.applySnapClasses();
         if (deps.navigation.isSnapSuspended()) scroll.classList.remove('snap-y', 'snap-mandatory');
 
-        await deps.measurement.measureAllPages(version);
-        if (version !== viewerVersion) return;
-        const restoreAfterMeasure = deps.getPendingRestore() ?? restore;
-        if (restoreAfterMeasure) deps.navigation.restoreScrollPosition(restoreAfterMeasure);
-        if (restoreAfterMeasure) {
-            deps.setPendingRestore(null);
-            deps.setSavedPosition(deps.viewport.captureScrollPos() ?? deps.getSavedPosition());
-        }
-        window.dispatchEvent(new Event('qv:pdf-layout-rendered'));
-        deps.viewport.scheduleMainWindowRender();
+        const finishMeasurement = () => {
+            if (version !== viewerVersion) return;
+            const restoreAfterMeasure = deps.getPendingRestore() ?? restore;
+            if (restoreAfterMeasure) deps.navigation.restoreScrollPosition(restoreAfterMeasure);
+            if (restoreAfterMeasure) {
+                deps.setPendingRestore(null);
+                deps.setSavedPosition(deps.viewport.captureScrollPos() ?? deps.getSavedPosition());
+            }
+            window.dispatchEvent(new Event('qv:pdf-layout-rendered'));
+            deps.viewport.scheduleMainWindowRender();
+        };
+        finishMeasurementTimer = setTimeout(() => {
+            finishMeasurementTimer = null;
+            if (version !== viewerVersion) return;
+            void deps.measurement.measureAllPages(version).then(finishMeasurement, (error: unknown) => {
+                if (version === viewerVersion) console.error('Error measuring PDF pages:', error);
+                finishMeasurement();
+            });
+        }, 0);
     }
 
     function renderAllMainPages(): Promise<void> {

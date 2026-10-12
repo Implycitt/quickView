@@ -3,9 +3,10 @@ import type { PdfDocumentLike } from '../types.js';
 import { createThumbnailLayout } from './layout.js';
 import type { ThumbnailDependencies } from './types.js';
 
-const DEFAULT_EVICT_RADIUS = 40;
+const DEFAULT_EVICT_RADIUS = 16;
 const LARGE_DOCUMENT_PAGE_COUNT = 700;
-const LARGE_DOCUMENT_EVICT_RADIUS = 12;
+const LARGE_DOCUMENT_EVICT_RADIUS = 8;
+const MAX_THUMBNAIL_OUTPUT_SCALE = 1.25;
 const THUMB_INSET = 16;
 
 interface ThumbnailRendererDependencies extends ThumbnailDependencies {
@@ -137,11 +138,11 @@ export function createThumbnailRenderer(deps: ThumbnailRendererDependencies) {
         }
     }
 
-    function queueRender(page: number) {
+    function queueRender(page: number, pump = true) {
         if (rendered.has(page) || pending.has(page)) return;
         pending.set(page, { task: null });
         queue.push(page);
-        pumpQueue();
+        if (pump) pumpQueue();
     }
 
     function pumpQueue() {
@@ -184,11 +185,12 @@ export function createThumbnailRenderer(deps: ThumbnailRendererDependencies) {
             if (!isCurrent()) return;
             const baseViewport = page.getViewport({ scale: 1 });
             const targetWidth = Math.max(120, deps.getSidebarTargetWidth() - THUMB_INSET * 2);
-            const scale = (targetWidth / baseViewport.width) * deps.getOutputScale();
+            const outputScale = Math.min(deps.getOutputScale(), MAX_THUMBNAIL_OUTPUT_SCALE);
+            const scale = (targetWidth / baseViewport.width) * outputScale;
             const viewport = page.getViewport({ scale });
             thumbnail.width = Math.max(1, Math.floor(viewport.width));
             thumbnail.height = Math.max(1, Math.floor(viewport.height));
-            const cssHeight = Math.max(1, Math.floor(viewport.height / deps.getOutputScale()));
+            const cssHeight = Math.max(1, Math.floor(viewport.height / outputScale));
             if (layout.updateAspect(pageNumber, baseViewport.height / baseViewport.width)) layout.invalidate();
             if (thumbnail.style.height !== `${cssHeight}px`) {
                 thumbnail.style.height = `${cssHeight}px`;
@@ -241,15 +243,31 @@ export function createThumbnailRenderer(deps: ThumbnailRendererDependencies) {
         if (anchor) sidebar.scrollTop = restoreSidebarAnchor(anchor);
         if (pdfDocument.numPages === 0) return;
         const paneScroll = Math.max(0, sidebar.scrollTop - paneOffsetInSidebar());
-        const first = Math.max(0, indexAt(paneScroll) - 2);
-        const last = Math.min(pdfDocument.numPages - 1, indexAt(paneScroll + sidebar.clientHeight) + 5);
+        const visibleFirst = Math.min(pdfDocument.numPages - 1, indexAt(paneScroll));
+        const visibleLast = Math.min(pdfDocument.numPages - 1, indexAt(paneScroll + sidebar.clientHeight));
+        const first = Math.max(0, visibleFirst - 2);
+        const last = Math.min(pdfDocument.numPages - 1, visibleLast + 5);
         for (let index = first; index <= last; index++) {
             layout.ensureMounted(index + 1, () => deps.jumpToPage(index + 1));
         }
         evict(first, last);
         const radius = evictionRadius();
         queue = queue.filter((page) => page - 1 >= first - radius - 5 && page - 1 <= last + radius + 5);
-        for (let page = first + 1; page <= last + 1; page++) queueRender(page);
+
+        const visiblePages: number[] = [];
+        for (let index = visibleFirst; index <= visibleLast; index++) visiblePages.push(index + 1);
+        const nearbyPages: number[] = [];
+        for (let index = first; index <= last; index++) {
+            if (index < visibleFirst || index > visibleLast) nearbyPages.push(index + 1);
+        }
+        for (const page of [...visiblePages, ...nearbyPages]) queueRender(page, false);
+        const priority = new Set([...visiblePages, ...nearbyPages]);
+        queue = [
+            ...visiblePages.filter((page) => pending.has(page)),
+            ...nearbyPages.filter((page) => pending.has(page)),
+            ...queue.filter((page) => !priority.has(page)),
+        ];
+        pumpQueue();
         syncActiveThumb();
     }
 

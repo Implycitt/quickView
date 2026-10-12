@@ -1,4 +1,4 @@
-import { getSidebarTargetWidth } from '../../../ui/core/dom.js';
+import { DOM, getSidebarTargetWidth } from '../../../ui/core/dom.js';
 import { PdfState } from '../state.js';
 import type { PdfLocation } from '../../../viewer/state.js';
 import { createPdfPageLayout } from '../layout.js';
@@ -11,7 +11,7 @@ import { createPdfMeasurement } from './measurement.js';
 import { createPdfViewport } from './viewport.js';
 import { createPdfMainSession } from './session.js';
 
-const MAX_OUTPUT_SCALE = 2;
+const MAX_OUTPUT_SCALE = 2.5;
 const RENDER_CONCURRENCY = 3;
 
 export interface PdfViewerState {
@@ -106,6 +106,13 @@ export function createPdfViewerServices(state: PdfViewerState): PdfViewerService
         getOutputScale,
         renderConcurrency: RENDER_CONCURRENCY,
         getActiveThumbnailRenders: () => services.thumbnails.getActivity().activeRenders,
+        shouldReserveThumbnailSlot: () =>
+            !!DOM.sidebar &&
+            DOM.sidebar.style.width !== '0px' &&
+            !!DOM.sidebarPreviews &&
+            !DOM.sidebarPreviews.classList.contains('hidden') &&
+            services.thumbnails.getActivity().pendingCount > 0 &&
+            services.thumbnails.getActivity().activeRenders === 0,
         renderTextLayer: renderPageTextLayer,
         clearPageSpans,
         resolveDestination: services.outline.resolveDestination,

@@ -2,6 +2,8 @@ import { addPageLinkLayer } from '../links.js';
 import type { PdfDocumentLike, PdfPageLike, PdfViewport } from '../types.js';
 import type { PdfPageLayout } from '../layout.js';
 
+const MAX_CANVAS_PIXELS = 8_500_000;
+
 interface PendingRender {
     task: { cancel?: () => void } | null;
     canvas: HTMLCanvasElement | null;
@@ -14,6 +16,7 @@ interface MainPageRendererDependencies {
     getOutputScale: () => number;
     renderConcurrency: number;
     getActiveThumbnailRenders: () => number;
+    shouldReserveThumbnailSlot: () => boolean;
     renderTextLayer: (
         page: PdfPageLike,
         container: HTMLElement,
@@ -69,7 +72,9 @@ export function createMainPageRenderer(deps: MainPageRendererDependencies) {
 
     function pump() {
         while (renderQueue.length > 0) {
-            if (activeRenders + deps.getActiveThumbnailRenders() >= deps.renderConcurrency) return;
+            const reservedSlots = deps.shouldReserveThumbnailSlot() ? 1 : 0;
+            const capacity = Math.max(1, deps.renderConcurrency - reservedSlots);
+            if (activeRenders + deps.getActiveThumbnailRenders() >= capacity) return;
             const page = renderQueue.shift()!;
             if (!pendingRenders.has(page)) continue;
             if (renderedCanvases.has(page)) {
@@ -108,11 +113,14 @@ export function createMainPageRenderer(deps: MainPageRendererDependencies) {
             canvas = document.createElement('canvas');
             const context = canvas.getContext('2d');
             if (!context) return;
-            const outputScale = deps.getOutputScale();
-            canvas.width = Math.floor(viewport.width * outputScale);
-            canvas.height = Math.floor(viewport.height * outputScale);
-            canvas.style.width = `${Math.floor(viewport.width)}px`;
-            canvas.style.height = `${Math.floor(viewport.height)}px`;
+            const outputScale = Math.min(
+                deps.getOutputScale(),
+                Math.sqrt(MAX_CANVAS_PIXELS / Math.max(1, viewport.width * viewport.height)),
+            );
+            canvas.width = Math.max(1, Math.ceil(viewport.width * outputScale));
+            canvas.height = Math.max(1, Math.ceil(viewport.height * outputScale));
+            canvas.style.width = `${viewport.width}px`;
+            canvas.style.height = `${viewport.height}px`;
             const transform = outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : undefined;
             container.appendChild(canvas);
             const task = page.render({ canvasContext: context, transform, viewport });
