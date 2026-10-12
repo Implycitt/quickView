@@ -1,6 +1,6 @@
 {
     "name": "quickview",
-    "version": "1.4.0",
+    "version": "1.5.0",
     "main": "dist-electron/main.js",
     "dependencies": {
         "katex": "^0.18.9",
