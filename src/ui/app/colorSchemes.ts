@@ -48,9 +48,7 @@ function applyColorScheme(scheme: ColorScheme) {
     root.style.setProperty('--qv-action-text', relativeLuminance(scheme.action) > 0.179 ? '#191B22' : '#FFFFFF');
     try {
         localStorage.setItem(SELECTED_SCHEME_KEY, scheme.name);
-    } catch {
-        // Keep the selected scheme active if storage is unavailable.
-    }
+    } catch {}
 }
 
 function setStatus(message: string) {
@@ -62,9 +60,7 @@ async function populateSchemes(announceReload = false) {
     let previous: string | null = null;
     try {
         previous = localStorage.getItem(SELECTED_SCHEME_KEY);
-    } catch {
-        // Use the first available scheme when storage is unavailable.
-    }
+    } catch {}
     const result = await window.electronAPI.getColorSchemes();
     const pickerPath = document.getElementById('theme-picker-file-path');
     if (pickerPath) pickerPath.textContent = result.path;

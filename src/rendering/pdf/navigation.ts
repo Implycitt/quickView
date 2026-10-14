@@ -1,4 +1,5 @@
 import { DOM, setSidebarFollowLabel, updateScrollModeClasses } from '../../ui/core/dom.js';
+import { scrollInstantly } from '../../ui/core/scroll.js';
 import { PdfState } from './state.js';
 import type { PdfLocation } from '../../viewer/state.js';
 
@@ -70,19 +71,7 @@ export function createPdfNavigation(deps: NavigationDependencies) {
     function setScrollTop(top: number) {
         const scroll = deps.getScrollContainer();
         if (!scroll) return;
-        const maxScroll = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
-        const target = Math.max(0, Math.min(maxScroll, top));
-        if (Math.abs(target - scroll.scrollTop) < 0.5) return;
-        scroll.style.scrollBehavior = 'auto';
-        scroll.scrollTop = target;
-        scroll.style.removeProperty('scroll-behavior');
-    }
-
-    function smoothScrollTo(top: number) {
-        const scroll = deps.getScrollContainer();
-        if (!scroll) return;
-        const maxScroll = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
-        scroll.scrollTo({ top: Math.max(0, Math.min(maxScroll, top)), behavior: 'smooth' });
+        scrollInstantly(scroll, top);
     }
 
     function anchorAlignment(page: number) {
@@ -266,9 +255,7 @@ export function createPdfNavigation(deps: NavigationDependencies) {
             const base = pageRect.top - scroll.getBoundingClientRect().top + scroll.scrollTop;
             const top = center ? Math.max(0, base + y - scroll.clientHeight / 2) : base + y;
             if (precise) suspendSnap();
-            const distance = Math.abs(top - scroll.scrollTop);
-            if (distance > (scroll.clientHeight || 1) * 1.5) setScrollTop(top);
-            else smoothScrollTo(top);
+            setScrollTop(top);
         };
         jump();
         if (deps.isPageMeasured(page)) return;

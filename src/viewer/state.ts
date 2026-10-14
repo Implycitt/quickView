@@ -35,9 +35,7 @@ function clearPersistedViewerState(): void {
                 localStorage.removeItem(key);
             }
         }
-    } catch {
-        // Storage may be unavailable; session-scoped state still works independently.
-    }
+    } catch {}
 }
 
 clearPersistedViewerState();
@@ -54,9 +52,7 @@ export function setLastDocumentPath(path: string | null): void {
     try {
         if (path) sessionStorage.setItem(LAST_DOCUMENT_PATH_KEY, path);
         else sessionStorage.removeItem(LAST_DOCUMENT_PATH_KEY);
-    } catch {
-        // Storage may be unavailable; reopening the last document is optional.
-    }
+    } catch {}
 }
 
 function isFiniteNumber(value: unknown): value is number {
@@ -117,7 +113,5 @@ export function readViewerState(documentId: string): StoredViewerState | null {
 export function writeViewerState(documentId: string, state: StoredViewerState): void {
     try {
         sessionStorage.setItem(`${STORAGE_PREFIX}${documentId}`, JSON.stringify(state));
-    } catch {
-        // Storage may be unavailable or full; the viewer should still work normally.
-    }
+    } catch {}
 }

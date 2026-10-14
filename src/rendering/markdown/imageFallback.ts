@@ -54,7 +54,6 @@ export function attachImageFallbacks(root: HTMLElement) {
             if (!img.isConnected || img.naturalWidth > 0 || imageSourceKey(img) !== sourceKey) return;
             img.replaceWith(makePlaceholder(imageDisplayName(img)));
         };
-        // Let the browser finish resolving the URL before deciding the image failed.
         imageFallbackListeners.set(img, { sourceKey, listener: onError });
         img.addEventListener('error', onError, { once: true });
     });

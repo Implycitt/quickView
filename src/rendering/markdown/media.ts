@@ -40,7 +40,6 @@ function resolveRelativeSrc(src: string, baseUrl: URL): string {
 }
 
 function resolveImageSrc(src: string, baseUrl: URL): string {
-    // DOM attribute values are already HTML-decoded; decoding again corrupts literal entity-like filenames.
     const resolved = resolveRelativeSrc(src, baseUrl);
     if (!resolved.toLowerCase().startsWith('file:')) return resolved;
     try {

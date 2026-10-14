@@ -178,9 +178,7 @@ export function createPdfOutline(deps: OutlineDependencies) {
                 return withDestinationPosition((await doc.getPageIndex(reference)) + 1, dest, doc);
             }
             if (typeof reference === 'number') return withDestinationPosition(Math.round(reference), dest, doc);
-        } catch {
-            // Ignore invalid destinations returned by the PDF parser.
-        }
+        } catch {}
         return null;
     }
 

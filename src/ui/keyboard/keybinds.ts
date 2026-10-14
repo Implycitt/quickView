@@ -1,4 +1,5 @@
 import { DOM, getScrollMode } from '../core/dom.js';
+import { scrollInstantly } from '../core/scroll.js';
 import { stepPdfPage } from '../../rendering/pdf/renderer.js';
 import { handleGlobalShortcut, isTypingTarget } from './shortcuts.js';
 
@@ -6,13 +7,16 @@ const DEFAULT_FREE_SCROLL_AMOUNT = 240;
 const MIN_FREE_SCROLL_AMOUNT = 60;
 const MAX_FREE_SCROLL_AMOUNT = 720;
 const FREE_SCROLL_AMOUNT_KEY = 'quickview.free-scroll-amount.v1';
-const HELD_SCROLL_SPEED = 4200;
+// One knob drives free-mode scrolling: the amount is the distance of a single tap, and a held
+// key scrolls at this multiple of it per second (240px taps scroll at 4200px/s).
+const FREE_SCROLL_TAP_RATE_PER_SECOND = 17.5;
 const FREE_SCROLL_HOLD_DELAY_MS = 120;
 const SNAP_SCROLL_REPEAT_DELAY_MS = 220;
 const SNAP_SCROLL_REPEAT_INTERVAL_MS = 220;
+const MAX_HELD_FRAME_MS = 50;
 
 let freeScrollAmount = readFreeScrollAmount();
-let pendingFreeScroll: { key: string; direction: number; container: HTMLElement; timeoutId: number } | null = null;
+let pendingFreeScroll: { key: string; timeoutId: number } | null = null;
 let activeFreeScroll: { key: string; frameId: number } | null = null;
 let activeSnapScroll: {
     key: string;
@@ -35,7 +39,7 @@ export function initKeybinds() {
     document.addEventListener('keyup', (event) => {
         const key = event.key.toLowerCase();
         stopHeldSnapScroll(key);
-        stopHeldFreeScroll(key, true);
+        stopHeldFreeScroll(key);
     });
     window.addEventListener('blur', () => {
         stopHeldSnapScroll();
@@ -73,21 +77,27 @@ function isSnapContainer(container: HTMLElement | null): boolean {
     return getScrollMode(container) === 'snap';
 }
 
+function heldScrollSpeed(): number {
+    return freeScrollAmount * FREE_SCROLL_TAP_RATE_PER_SECOND;
+}
+
 function handleScrollKeyDown(event: KeyboardEvent, direction: number) {
     const container = document.getElementById('pdf-scroll-container');
     const snapMode = isSnapContainer(container);
     if (!container || snapMode) {
-        if (!event.repeat) {
-            stopHeldSnapScroll();
-            stopHeldFreeScroll();
-            performScroll(direction);
-            if (container && snapMode) startHeldSnapScroll(event.key.toLowerCase(), direction, container);
-        }
+        if (event.repeat) return;
+        stopHeldSnapScroll();
+        stopHeldFreeScroll();
+        performScroll(direction);
+        if (container && snapMode) startHeldSnapScroll(event.key.toLowerCase(), direction, container);
         return;
     }
     if (event.repeat) return;
 
     stopHeldFreeScroll();
+    // Step on key down so a tap lands at once, then keep scrolling only if the key is still down
+    // after the hold delay.
+    performScroll(direction);
     const key = event.key.toLowerCase();
     const timeoutId = window.setTimeout(() => {
         if (pendingFreeScroll?.key !== key) return;
@@ -100,14 +110,14 @@ function handleScrollKeyDown(event: KeyboardEvent, direction: number) {
                 stopHeldFreeScroll();
                 return;
             }
-            const elapsed = Math.min(frameTime - lastFrameTime, 50);
+            const elapsed = Math.min(frameTime - lastFrameTime, MAX_HELD_FRAME_MS);
             lastFrameTime = frameTime;
-            activeContainer.scrollTop += (direction * HELD_SCROLL_SPEED * elapsed) / 1000;
+            activeContainer.scrollTop += (direction * heldScrollSpeed() * elapsed) / 1000;
             activeFreeScroll.frameId = window.requestAnimationFrame(scrollFrame);
         };
         activeFreeScroll = { key, frameId: window.requestAnimationFrame(scrollFrame) };
     }, FREE_SCROLL_HOLD_DELAY_MS);
-    pendingFreeScroll = { key, direction, container, timeoutId };
+    pendingFreeScroll = { key, timeoutId };
 }
 
 function startHeldSnapScroll(key: string, direction: number, container: HTMLElement) {
@@ -141,18 +151,10 @@ function stopHeldSnapScroll(key?: string) {
     if (repeat.intervalId !== null) window.clearInterval(repeat.intervalId);
 }
 
-function stopHeldFreeScroll(key?: string, scrollTap = false) {
+function stopHeldFreeScroll(key?: string) {
     if (pendingFreeScroll && (!key || pendingFreeScroll.key === key)) {
-        const pending = pendingFreeScroll;
-        window.clearTimeout(pending.timeoutId);
+        window.clearTimeout(pendingFreeScroll.timeoutId);
         pendingFreeScroll = null;
-        if (
-            scrollTap &&
-            pending.container.isConnected &&
-            document.getElementById('pdf-scroll-container') === pending.container
-        ) {
-            performScroll(pending.direction);
-        }
     }
     if (activeFreeScroll && (!key || activeFreeScroll.key === key)) {
         window.cancelAnimationFrame(activeFreeScroll.frameId);
@@ -167,5 +169,7 @@ function performScroll(direction: number) {
         stepPdfPage(direction);
         return;
     }
-    container.scrollBy({ top: freeScrollAmount * direction, behavior: 'smooth' });
+    // Free mode steps instantly: an animated scroll is merged or cancelled by the next tap and by
+    // the viewer's own layout passes, which loses steps or drags the view backwards.
+    scrollInstantly(container, container.scrollTop + freeScrollAmount * direction);
 }
