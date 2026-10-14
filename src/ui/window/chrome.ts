@@ -1,3 +1,5 @@
+import { BREADCRUMB_SEPARATOR } from '../core/breadcrumb.js';
+
 type WindowState = { maximized: boolean };
 
 export function initWindowChrome() {
@@ -31,13 +33,15 @@ export function initWindowChrome() {
     const breadcrumb = document.getElementById('breadcrumb');
     if (titleLabel && breadcrumb) {
         const syncTitleLabel = () => {
-            const trail = (breadcrumb.textContent ?? '').trim();
-            const name = trail.split(' \u25b8 ')[0] || 'QuickView';
+            const trail = (breadcrumb.title || breadcrumb.textContent || '').trim();
+            const name = trail.split(BREADCRUMB_SEPARATOR)[0] || 'QuickView';
             titleLabel.textContent = name;
             titleLabel.title = trail || 'QuickView';
             document.title = name;
         };
         new MutationObserver(syncTitleLabel).observe(breadcrumb, {
+            attributes: true,
+            attributeFilter: ['title'],
             childList: true,
             characterData: true,
             subtree: true,

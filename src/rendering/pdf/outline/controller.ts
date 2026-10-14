@@ -1,5 +1,5 @@
 import { DOM } from '../../../ui/core/dom.js';
-import { setBreadcrumbPath } from '../../../ui/core/breadcrumb.js';
+import { BREADCRUMB_SEPARATOR, setBreadcrumbPath } from '../../../ui/core/breadcrumb.js';
 import { buildOutlineItem } from './tree.js';
 import type { OutlineDependencies, OutlinePosition, OutlineTarget } from './types.js';
 
@@ -128,7 +128,7 @@ export function createPdfOutline(deps: OutlineDependencies) {
                 parts.unshift(node.querySelector('.outline-label')?.textContent || '(untitled)');
                 node = parents.get(node) ?? null;
             }
-            path = `${fileName} ▸ ${parts.join(' ▸ ')}`;
+            path = `${fileName}${BREADCRUMB_SEPARATOR}${parts.join(BREADCRUMB_SEPARATOR)}`;
         }
         setBreadcrumbPath(path);
     }

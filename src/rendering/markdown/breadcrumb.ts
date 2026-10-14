@@ -1,5 +1,5 @@
 import { DOM } from '../../ui/core/dom.js';
-import { setBreadcrumbPath } from '../../ui/core/breadcrumb.js';
+import { BREADCRUMB_SEPARATOR, setBreadcrumbPath } from '../../ui/core/breadcrumb.js';
 
 let mdFileName: string | null = null;
 let mdHeadings: HTMLElement[] = [];
@@ -56,7 +56,9 @@ function syncMdBreadcrumb() {
             if (top <= mid) bestIndex = i;
             else break;
         }
-        if (bestIndex >= 0) path = `${mdFileName} ▸ ${headingPath(bestIndex).join(' ▸ ')}`;
+        if (bestIndex >= 0) {
+            path = `${mdFileName}${BREADCRUMB_SEPARATOR}${headingPath(bestIndex).join(BREADCRUMB_SEPARATOR)}`;
+        }
     }
     setBreadcrumbPath(path);
 }
