@@ -84,7 +84,7 @@ export async function renderPdfDocument(
             });
         } else if (!reopening) {
             setPdfZoom(1, 'auto');
-            applyPdfViewerSettings({ isSnapMode: true, snapSuspended: false, sidebarFollow: true });
+            applyPdfViewerSettings({ isSnapMode: false, snapSuspended: false, sidebarFollow: true });
         }
 
         await renderAllMainPages();

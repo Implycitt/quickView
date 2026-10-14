@@ -75,13 +75,18 @@ export function createPdfViewport(deps: PdfViewportDependencies) {
         deps.layout.syncMountedPages(first, last);
         deps.mainPages.retainQueuedPages(first, last);
 
-        for (let page = visibleFirst; page <= visibleLast; page++) deps.mainPages.queuePage(page);
+        const firstPaint = deps.mainPages.needsFirstPaint();
+        const centerPage = deps.layout.pageAtOffset(scroll.scrollTop + (scroll.clientHeight || 1) / 2);
+        for (let page = visibleFirst; page <= visibleLast; page++) {
+            deps.mainPages.queuePage(page, { critical: firstPaint && page === centerPage });
+        }
         for (let delta = 1; delta <= Math.max(margins.behind, margins.ahead); delta++) {
             const before = visibleFirst - delta;
             const after = visibleLast + delta;
             if (before >= first) deps.mainPages.queuePage(before);
             if (after <= last) deps.mainPages.queuePage(after);
         }
+        deps.navigation.refreshSnapAnchor();
     }
 
     function scheduleMainWindowRender() {

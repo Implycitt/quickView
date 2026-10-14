@@ -1,4 +1,5 @@
-import { DOM } from '../core/dom.js';
+import { DOM, getScrollMode } from '../core/dom.js';
+import { stepPdfPage } from '../../rendering/pdf/renderer.js';
 import { handleGlobalShortcut, isTypingTarget } from './shortcuts.js';
 
 const DEFAULT_FREE_SCROLL_AMOUNT = 240;
@@ -68,9 +69,13 @@ function initFreeScrollAmountControl() {
     });
 }
 
+function isSnapContainer(container: HTMLElement | null): boolean {
+    return getScrollMode(container) === 'snap';
+}
+
 function handleScrollKeyDown(event: KeyboardEvent, direction: number) {
     const container = document.getElementById('pdf-scroll-container');
-    const snapMode = !!container?.classList.contains('snap-mandatory');
+    const snapMode = isSnapContainer(container);
     if (!container || snapMode) {
         if (!event.repeat) {
             stopHeldSnapScroll();
@@ -91,11 +96,7 @@ function handleScrollKeyDown(event: KeyboardEvent, direction: number) {
         const scrollFrame = (frameTime: number) => {
             if (activeFreeScroll?.key !== key) return;
             const activeContainer = document.getElementById('pdf-scroll-container');
-            if (
-                !activeContainer ||
-                activeContainer !== container ||
-                activeContainer.classList.contains('snap-mandatory')
-            ) {
+            if (!activeContainer || activeContainer !== container || isSnapContainer(activeContainer)) {
                 stopHeldFreeScroll();
                 return;
             }
@@ -125,11 +126,7 @@ function startHeldSnapScroll(key: string, direction: number, container: HTMLElem
 function repeatSnapScroll(repeat: NonNullable<typeof activeSnapScroll>) {
     if (activeSnapScroll !== repeat) return;
     const container = document.getElementById('pdf-scroll-container');
-    if (
-        !repeat.container.isConnected ||
-        container !== repeat.container ||
-        !repeat.container.classList.contains('snap-mandatory')
-    ) {
+    if (!repeat.container.isConnected || container !== repeat.container || !isSnapContainer(repeat.container)) {
         stopHeldSnapScroll(repeat.key);
         return;
     }
@@ -166,6 +163,9 @@ function stopHeldFreeScroll(key?: string, scrollTap = false) {
 function performScroll(direction: number) {
     const container = document.getElementById('pdf-scroll-container') || DOM.mainContentNode;
     if (!container) return;
-    const amount = container.classList.contains('snap-mandatory') ? container.clientHeight * 0.8 : freeScrollAmount;
-    container.scrollBy({ top: amount * direction, behavior: 'smooth' });
+    if (isSnapContainer(container)) {
+        stepPdfPage(direction);
+        return;
+    }
+    container.scrollBy({ top: freeScrollAmount * direction, behavior: 'smooth' });
 }

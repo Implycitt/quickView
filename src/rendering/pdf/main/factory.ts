@@ -1,4 +1,4 @@
-import { DOM, getSidebarTargetWidth } from '../../../ui/core/dom.js';
+import { getSidebarTargetWidth } from '../../../ui/core/dom.js';
 import { PdfState } from '../state.js';
 import type { PdfLocation } from '../../../viewer/state.js';
 import { createPdfPageLayout } from '../layout.js';
@@ -64,10 +64,9 @@ export function createPdfViewerServices(state: PdfViewerState): PdfViewerService
             return state.lastKnownPage;
         },
         scheduleRender: () => services.viewport.scheduleMainWindowRender(),
-        measurePage: (page) => services.measurement.measurePageNow(page),
-        waitForMeasurement: () => services.measurement.whenMeasurementDone(),
+        measureAround: (page) => services.measurement.measureWindow(page),
         refreshSidebar: (scrollToActive) => services.viewport.refreshSidebarSync(scrollToActive),
-        applySnapClasses: services.layout.applySnapClasses,
+        applyScrollMode: services.layout.applyScrollMode,
         clearPendingRestore: () => (state.pendingRestoreLocation = null),
     });
 
@@ -105,14 +104,6 @@ export function createPdfViewerServices(state: PdfViewerState): PdfViewerService
         layout: services.layout,
         getOutputScale,
         renderConcurrency: RENDER_CONCURRENCY,
-        getActiveThumbnailRenders: () => services.thumbnails.getActivity().activeRenders,
-        shouldReserveThumbnailSlot: () =>
-            !!DOM.sidebar &&
-            DOM.sidebar.style.width !== '0px' &&
-            !!DOM.sidebarPreviews &&
-            !DOM.sidebarPreviews.classList.contains('hidden') &&
-            services.thumbnails.getActivity().pendingCount > 0 &&
-            services.thumbnails.getActivity().activeRenders === 0,
         renderTextLayer: renderPageTextLayer,
         clearPageSpans,
         resolveDestination: services.outline.resolveDestination,
@@ -125,6 +116,8 @@ export function createPdfViewerServices(state: PdfViewerState): PdfViewerService
         layout: services.layout,
         getViewerVersion: () => services.session.getViewerVersion(),
         scheduleThumbnails: () => services.thumbnails.schedule(),
+        getCurrentPage: () => state.lastKnownPage,
+        isViewerBusy: () => services.viewport.isViewerBusy(),
     });
 
     services.viewport = createPdfViewport({

@@ -7,6 +7,7 @@ const DEFAULT_EVICT_RADIUS = 16;
 const LARGE_DOCUMENT_PAGE_COUNT = 700;
 const LARGE_DOCUMENT_EVICT_RADIUS = 8;
 const MAX_THUMBNAIL_OUTPUT_SCALE = 1.25;
+const THUMBNAIL_RENDER_CONCURRENCY = 1;
 const THUMB_INSET = 16;
 
 interface ThumbnailRendererDependencies extends ThumbnailDependencies {
@@ -19,7 +20,13 @@ interface ThumbnailRendererDependencies extends ThumbnailDependencies {
     isFollowSuppressed: () => boolean;
     getCurrentPage: () => number;
     jumpToPage: (page: number) => void;
-    getMainRenderActivity: () => { queueLength: number; pendingCount: number; activeCount: number };
+    getMainRenderActivity: () => {
+        queueLength: number;
+        pendingCount: number;
+        activeCount: number;
+        critical: boolean;
+        firstPaintPending: boolean;
+    };
     notifyMainQueue: () => void;
     releasePage: (page: number) => void;
     isObsoleteRender: (error: unknown, document: unknown) => boolean;
@@ -148,10 +155,10 @@ export function createThumbnailRenderer(deps: ThumbnailRendererDependencies) {
     function pumpQueue() {
         while (queue.length > 0) {
             const mainActivity = deps.getMainRenderActivity();
-            const mainBusy = mainActivity.queueLength > 0 || mainActivity.pendingCount > 0;
+            if (mainActivity.critical || mainActivity.activeCount > 0 || mainActivity.pendingCount > 0) return;
+            if (mainActivity.firstPaintPending && mainActivity.queueLength > 0) return;
             const free = deps.renderConcurrency - mainActivity.activeCount - activeRenders;
-            const limit = mainBusy ? 1 : deps.renderConcurrency;
-            if (free <= 0 || activeRenders >= limit) return;
+            if (free <= 0 || activeRenders >= THUMBNAIL_RENDER_CONCURRENCY) return;
             const page = queue.shift()!;
             if (!pending.has(page)) continue;
             if (rendered.has(page)) {
@@ -180,7 +187,12 @@ export function createThumbnailRenderer(deps: ThumbnailRendererDependencies) {
             DOM.sidebarPreviews?.querySelector(`[data-page-num="${pageNumber}"]`) === thumbnail &&
             deps.getDocument() === document;
         if (!thumbnail || !thumbnail.isConnected || !document) return;
+        if (thumbnail.dataset.rendering === '1') {
+            schedule();
+            return;
+        }
         try {
+            thumbnail.dataset.rendering = '1';
             const page = await document.getPage(pageNumber);
             if (!isCurrent()) return;
             const baseViewport = page.getViewport({ scale: 1 });
@@ -208,6 +220,8 @@ export function createThumbnailRenderer(deps: ThumbnailRendererDependencies) {
             if (pending.get(pageNumber) === entry && !deps.isObsoleteRender(error, document)) {
                 console.error(`Error rendering thumbnail ${pageNumber}:`, error);
             }
+        } finally {
+            delete thumbnail.dataset.rendering;
         }
     }
 

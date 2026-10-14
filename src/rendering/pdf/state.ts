@@ -4,7 +4,7 @@ import type { PdfDocumentLike } from './types.js';
 export const PdfState = {
     currentPdfDoc: null as PdfDocumentLike | null,
     currentScale: 1.0,
-    isSnapMode: true,
+    isSnapMode: false,
     zoomMode: 'auto' as ZoomMode,
     sidebarFollow: true,
 };

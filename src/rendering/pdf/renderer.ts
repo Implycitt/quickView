@@ -20,6 +20,7 @@ export const setCurrentFileName = services.outline.setFileName;
 export const resetPdfState = lifecycle.resetAll;
 export const restorePdfPosition = lifecycle.restorePosition;
 export const goToPage = services.navigation.goToPage;
+export const stepPdfPage = services.navigation.stepPage;
 export const toggleSidebarFollow = services.navigation.toggleSidebarFollow;
 export const setSidebarFollowSuppressed = services.navigation.setSidebarFollowSuppressed;
 export const refreshSidebarSync = services.viewport.refreshSidebarSync;

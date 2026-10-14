@@ -6,6 +6,9 @@ export default defineConfig({
     server: {
         watch: { ignored: [/\.md$/i] },
     },
+    optimizeDeps: {
+        include: ['pdfjs-dist'],
+    },
     build: {
         outDir: 'dist',
         emptyOutDir: true,

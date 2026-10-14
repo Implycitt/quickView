@@ -3,6 +3,8 @@ import { setBreadcrumbPath } from '../../../ui/core/breadcrumb.js';
 import { buildOutlineItem } from './tree.js';
 import type { OutlineDependencies, OutlinePosition, OutlineTarget } from './types.js';
 
+const OUTLINE_LINK_CONCURRENCY = 8;
+
 export function createPdfOutline(deps: OutlineDependencies) {
     const destinations = new Map<HTMLElement, unknown>();
     const positions = new Map<HTMLElement, OutlinePosition>();
@@ -206,15 +208,21 @@ export function createPdfOutline(deps: OutlineDependencies) {
 
     async function linkRows() {
         if (!DOM.sidebarSections) return;
-        for (const row of Array.from(DOM.sidebarSections.querySelectorAll<HTMLElement>('.outline-item'))) {
-            const destination = destinations.get(row);
-            if (!destination) continue;
-            const target = await resolveDestination(destination);
-            if (target) {
-                row.dataset.page = String(target.page);
-                positions.set(row, { page: target.page, y: target.y ?? 0 });
+        const rows = Array.from(DOM.sidebarSections.querySelectorAll<HTMLElement>('.outline-item'));
+        let next = 0;
+        const worker = async () => {
+            while (next < rows.length) {
+                const row = rows[next++];
+                const destination = destinations.get(row);
+                if (!destination) continue;
+                const target = await resolveDestination(destination);
+                if (target) {
+                    row.dataset.page = String(target.page);
+                    positions.set(row, { page: target.page, y: target.y ?? 0 });
+                }
             }
-        }
+        };
+        await Promise.all(Array.from({ length: Math.min(OUTLINE_LINK_CONCURRENCY, rows.length) }, worker));
     }
 
     async function render() {

@@ -80,7 +80,10 @@ export function bindViewerControls({ openDocument, onStateChanged }: ViewerContr
             return;
         }
         const parsed = parseInt(DOM.pageCounter.value, 10);
-        goToPage(Number.isNaN(parsed) ? 1 : parsed);
+        const page = Math.max(1, Math.min(PdfState.currentPdfDoc.numPages, Number.isNaN(parsed) ? 1 : parsed));
+        if (DOM.pageCounter.value !== String(page)) DOM.pageCounter.value = String(page);
+        DOM.pageCounter.dataset.current = String(page);
+        goToPage(page);
     });
     DOM.pageCounter?.addEventListener('keydown', (event) => {
         if (event.key === 'Enter') (event.target as HTMLInputElement).blur();

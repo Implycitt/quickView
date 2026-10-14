@@ -3,6 +3,8 @@ import type { PdfDocumentLike, PdfPageLike, PdfViewport } from '../types.js';
 import type { PdfPageLayout } from '../layout.js';
 
 const MAX_CANVAS_PIXELS = 8_500_000;
+const SEQUENTIAL_RENDER_THRESHOLD_MS = 900;
+const PARALLEL_RENDER_THRESHOLD_MS = 120;
 
 interface PendingRender {
     task: { cancel?: () => void } | null;
@@ -15,8 +17,6 @@ interface MainPageRendererDependencies {
     layout: Pick<PdfPageLayout, 'getPageContainer' | 'setPagePoints'>;
     getOutputScale: () => number;
     renderConcurrency: number;
-    getActiveThumbnailRenders: () => number;
-    shouldReserveThumbnailSlot: () => boolean;
     renderTextLayer: (
         page: PdfPageLike,
         container: HTMLElement,
@@ -33,8 +33,12 @@ export function createMainPageRenderer(deps: MainPageRendererDependencies) {
     const renderedCanvases = new Map<number, HTMLCanvasElement>();
     const pendingRenders = new Map<number, PendingRender>();
     const pageHandles = new Map<number, PdfPageLike>();
+    const criticalPages = new Set<number>();
+    let activeCriticalPage: number | null = null;
     let renderQueue: number[] = [];
     let activeRenders = 0;
+    let sequentialRenders = false;
+    let fastRendersInARow = 0;
 
     function releasePage(pageNumber: number) {
         if (pendingRenders.has(pageNumber) || renderedCanvases.has(pageNumber)) return;
@@ -47,6 +51,7 @@ export function createMainPageRenderer(deps: MainPageRendererDependencies) {
     }
 
     function onPageUnmounted(pageNumber: number) {
+        criticalPages.delete(pageNumber);
         const entry = pendingRenders.get(pageNumber);
         if (entry) {
             try {
@@ -61,7 +66,8 @@ export function createMainPageRenderer(deps: MainPageRendererDependencies) {
         releasePage(pageNumber);
     }
 
-    function queuePage(pageNumber: number) {
+    function queuePage(pageNumber: number, options: { critical?: boolean } = {}) {
+        if (options.critical) criticalPages.add(pageNumber);
         if (renderedCanvases.has(pageNumber) || pendingRenders.has(pageNumber)) return;
         const container = deps.layout.getPageContainer(pageNumber);
         if (!container?.isConnected) return;
@@ -70,22 +76,71 @@ export function createMainPageRenderer(deps: MainPageRendererDependencies) {
         pump();
     }
 
+    function trackRenderCost(duration: number) {
+        if (duration >= SEQUENTIAL_RENDER_THRESHOLD_MS) {
+            sequentialRenders = true;
+            fastRendersInARow = 0;
+            return;
+        }
+        if (!sequentialRenders || duration > PARALLEL_RENDER_THRESHOLD_MS) {
+            fastRendersInARow = 0;
+            return;
+        }
+        fastRendersInARow++;
+        if (fastRendersInARow >= 3) {
+            sequentialRenders = false;
+            fastRendersInARow = 0;
+        }
+    }
+
+    function pendingCriticalPage(): number | null {
+        for (const page of criticalPages) {
+            if (pendingRenders.has(page)) return page;
+        }
+        return null;
+    }
+
+    function hasCriticalWork(): boolean {
+        return activeCriticalPage !== null || pendingCriticalPage() !== null;
+    }
+
     function pump() {
         while (renderQueue.length > 0) {
-            const reservedSlots = deps.shouldReserveThumbnailSlot() ? 1 : 0;
-            const capacity = Math.max(1, deps.renderConcurrency - reservedSlots);
-            if (activeRenders + deps.getActiveThumbnailRenders() >= capacity) return;
+            const critical = pendingCriticalPage();
+            if (activeCriticalPage !== null) {
+                if (critical === null || critical !== activeCriticalPage) return;
+            } else if (critical !== null && activeRenders > 0) {
+                return;
+            }
+            if (critical !== null) {
+                const index = renderQueue.indexOf(critical);
+                if (index > 0) {
+                    renderQueue.splice(index, 1);
+                    renderQueue.unshift(critical);
+                }
+            }
+            const capacity = critical !== null || sequentialRenders ? 1 : deps.renderConcurrency;
+            if (activeRenders >= capacity) return;
             const page = renderQueue.shift()!;
-            if (!pendingRenders.has(page)) continue;
+            if (!pendingRenders.has(page)) {
+                criticalPages.delete(page);
+                continue;
+            }
             if (renderedCanvases.has(page)) {
                 pendingRenders.delete(page);
+                criticalPages.delete(page);
                 continue;
             }
             const entry = pendingRenders.get(page);
             if (!entry) continue;
+            const isCritical = criticalPages.delete(page);
+            if (isCritical) activeCriticalPage = page;
             activeRenders++;
+            const startedAt = performance.now();
             void renderPage(page, entry).finally(() => {
                 activeRenders = Math.max(0, activeRenders - 1);
+                if (activeCriticalPage === page) activeCriticalPage = null;
+                trackRenderCost(performance.now() - startedAt);
                 if (pendingRenders.get(page) === entry) pendingRenders.delete(page);
                 pump();
                 deps.onRenderSettled();
@@ -151,12 +206,21 @@ export function createMainPageRenderer(deps: MainPageRendererDependencies) {
             } catch {}
         }
         pendingRenders.clear();
+        criticalPages.clear();
+        activeCriticalPage = null;
         renderQueue = [];
     }
 
     function clear() {
         renderedCanvases.clear();
+        criticalPages.clear();
+        activeCriticalPage = null;
         pageHandles.clear();
+    }
+
+    function resetRenderCost() {
+        sequentialRenders = false;
+        fastRendersInARow = 0;
     }
 
     function retainQueuedPages(first: number, last: number) {
@@ -166,15 +230,19 @@ export function createMainPageRenderer(deps: MainPageRendererDependencies) {
     return {
         cancel,
         clear,
+        needsFirstPaint: () => renderedCanvases.size === 0 && activeRenders === 0,
         getActivity: () => ({
             queueLength: renderQueue.length,
             pendingCount: pendingRenders.size,
             activeCount: activeRenders,
+            critical: hasCriticalWork(),
+            firstPaintPending: renderedCanvases.size === 0 && activeRenders === 0,
         }),
         onPageUnmounted,
         pump,
         queuePage,
         releasePage,
+        resetRenderCost,
         retainQueuedPages,
     };
 }

@@ -7,7 +7,12 @@ import {
     captureViewerState as captureState,
 } from './viewerStateController.js';
 import { PdfState } from '../../rendering/pdf/state.js';
-import { applyPdfViewerSettings, setPdfZoom, whenMainRenderIdle } from '../../rendering/pdf/renderer.js';
+import {
+    applyPdfViewerSettings,
+    isSnapSuspended,
+    setPdfZoom,
+    whenMainRenderIdle,
+} from '../../rendering/pdf/renderer.js';
 import { readViewerState } from '../../viewer/state.js';
 import { documentIdentity } from '../../rendering/documents/identity.js';
 import type { DocumentType, StoredViewerState } from '../../viewer/state.js';
@@ -81,14 +86,23 @@ export function createDocumentController() {
         if (incoming.type === 'pdf' && viewerState?.documentType === 'pdf') {
             restoreCommonViewerSettings(viewerState, false);
         } else if (incoming.type === 'pdf' && !sameDocument) {
-            PdfState.isSnapMode = true;
+            PdfState.isSnapMode = false;
             PdfState.sidebarFollow = true;
-            applyPdfViewerSettings({ isSnapMode: true, snapSuspended: false, sidebarFollow: true });
+            applyPdfViewerSettings({ isSnapMode: false, snapSuspended: false, sidebarFollow: true });
             setPdfZoom(1, 'auto');
             toggleSidebar('open');
             setSidebarTab('previews');
             DOM.sidebar.scrollTop = 0;
         }
+
+        const settingsAtLoadStart =
+            incoming.type === 'pdf'
+                ? {
+                      isSnapMode: PdfState.isSnapMode,
+                      sidebarFollow: PdfState.sidebarFollow,
+                      suspended: isSnapSuspended(),
+                  }
+                : null;
 
         const isStale = () => token !== documentLoadToken;
         if (incoming.type === 'pdf') {
@@ -123,7 +137,12 @@ export function createDocumentController() {
         if (incoming.type === 'pdf' && viewerState?.documentType === 'pdf') {
             restoreCommonViewerSettings(viewerState);
         } else if (incoming.type === 'pdf') {
-            applyPdfViewerSettings({ isSnapMode: true, snapSuspended: false, sidebarFollow: true });
+            const untouched =
+                !!settingsAtLoadStart &&
+                settingsAtLoadStart.isSnapMode === PdfState.isSnapMode &&
+                settingsAtLoadStart.sidebarFollow === PdfState.sidebarFollow &&
+                settingsAtLoadStart.suspended === isSnapSuspended();
+            if (untouched) applyPdfViewerSettings({ isSnapMode: false, snapSuspended: false, sidebarFollow: true });
         } else if (viewerState?.documentType === incoming.type) {
             if (incoming.type === 'html') restoreHtmlViewerState(viewerState);
             else restoreMarkdownViewerState(viewerState);

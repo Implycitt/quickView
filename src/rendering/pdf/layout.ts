@@ -175,7 +175,6 @@ export function createPdfPageLayout(deps: PdfPageLayoutDependencies) {
         container.dataset.pageNum = String(pageNumber);
         container.style.width = `${size.width * scale}px`;
         container.style.height = `${size.height * scale}px`;
-        if (deps.getSnapMode() && !deps.isSnapSuspended()) container.classList.add('snap-center');
         return container;
     }
 
@@ -237,13 +236,10 @@ export function createPdfPageLayout(deps: PdfPageLayoutDependencies) {
         syncMountedPages(pageNumber - margin.behind, pageNumber + margin.ahead);
     }
 
-    function applySnapClasses() {
+    function applyScrollMode() {
+        if (!scrollContainer) return;
         const enabled = deps.getSnapMode() && !deps.isSnapSuspended();
-        scrollContainer?.classList.toggle('snap-y', enabled);
-        scrollContainer?.classList.toggle('snap-mandatory', enabled);
-        for (const pageNumber of mountedPages) {
-            pageContainers[pageNumber - 1]?.classList.toggle('snap-center', enabled);
-        }
+        scrollContainer.dataset.scrollMode = enabled ? 'snap' : 'free';
     }
 
     function sampleLayout() {
@@ -295,7 +291,7 @@ export function createPdfPageLayout(deps: PdfPageLayoutDependencies) {
         setPlaceholderPoints,
         setViewer,
         syncMountedPages,
-        applySnapClasses,
+        applyScrollMode,
         updateSpacers,
     };
 }

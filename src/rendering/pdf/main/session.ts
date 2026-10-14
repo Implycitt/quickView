@@ -39,6 +39,7 @@ export function createPdfMainSession(deps: PdfMainSessionDependencies) {
         }
         deps.mainPages.cancel();
         deps.mainPages.clear();
+        deps.navigation.detachScrollContainer();
         const scroll = deps.layout.getScrollContainer();
         scroll?.removeEventListener('scroll', deps.viewport.onMainScroll);
         scroll?.remove();
@@ -56,6 +57,7 @@ export function createPdfMainSession(deps: PdfMainSessionDependencies) {
         }
         deps.mainPages.cancel();
         deps.mainPages.clear();
+        deps.mainPages.resetRenderCost();
         deps.viewport.clearSettleTimer();
 
         const scroll = document.createElement('div');
@@ -96,23 +98,25 @@ export function createPdfMainSession(deps: PdfMainSessionDependencies) {
         content.innerHTML = '';
         content.appendChild(scroll);
         scroll.addEventListener('scroll', deps.viewport.onMainScroll, { passive: true });
+        deps.navigation.attachScrollContainer(scroll);
 
         deps.layout.sampleLayout();
         deps.layout.mountAroundPage(restore?.page ?? deps.getLastKnownPage() ?? 1);
         deps.layout.updateSpacers();
         deps.navigation.restoreScrollPosition(restore);
         deps.viewport.scheduleMainWindowRender();
-        deps.layout.applySnapClasses();
-        if (deps.navigation.isSnapSuspended()) scroll.classList.remove('snap-y', 'snap-mandatory');
+        deps.layout.applyScrollMode();
 
         const finishMeasurement = () => {
             if (version !== viewerVersion) return;
             const restoreAfterMeasure = deps.getPendingRestore() ?? restore;
-            if (restoreAfterMeasure) deps.navigation.restoreScrollPosition(restoreAfterMeasure);
-            if (restoreAfterMeasure) {
-                deps.setPendingRestore(null);
+            const stillOnTarget =
+                !!restoreAfterMeasure && deps.viewport.captureScrollPos()?.page === restoreAfterMeasure.page;
+            if (restoreAfterMeasure && stillOnTarget) {
+                deps.navigation.restoreScrollPosition(restoreAfterMeasure);
                 deps.setSavedPosition(deps.viewport.captureScrollPos() ?? deps.getSavedPosition());
             }
+            deps.setPendingRestore(null);
             window.dispatchEvent(new Event('qv:pdf-layout-rendered'));
             deps.viewport.scheduleMainWindowRender();
         };

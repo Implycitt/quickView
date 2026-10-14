@@ -2,6 +2,12 @@ import { DOM, setSidebarFollowLabel, updateScrollModeClasses } from '../../ui/co
 import { PdfState } from './state.js';
 import type { PdfLocation } from '../../viewer/state.js';
 
+const WHEEL_STEP_DISTANCE = 24;
+const WHEEL_STEP_COOLDOWN_MS = 110;
+const SNAP_ANCHOR_TTL_MS = 1500;
+const REALIGN_PAGE_TOLERANCE = 1;
+const SNAP_RESUME_KEYS = new Set(['j', 'k', 'arrowup', 'arrowdown', 'pageup', 'pagedown', 'home', 'end', ' ']);
+
 interface NavigationDependencies {
     getScrollContainer: () => HTMLElement | null;
     getPageCount: () => number;
@@ -12,48 +18,128 @@ interface NavigationDependencies {
     ensureGeometry: () => void;
     currentPageAtViewport: () => number;
     scheduleRender: () => void;
-    measurePage: (page: number) => Promise<void>;
-    waitForMeasurement: () => Promise<void>;
+    measureAround: (page: number) => Promise<void>;
     refreshSidebar: (scrollToActive?: boolean) => void;
-    applySnapClasses: () => void;
+    applyScrollMode: () => void;
     clearPendingRestore?: () => void;
 }
 
 export function createPdfNavigation(deps: NavigationDependencies) {
     let snapSuspended = false;
-    let resumeHandler: (() => void) | null = null;
     let followSuppressed = false;
+    let resumeHandler: ((event: Event) => void) | null = null;
+    let anchoredPage: number | null = null;
+    let anchorExpiresAt = 0;
+    let wheelContainer: HTMLElement | null = null;
+    let wheelAccumulator = 0;
+    let wheelLockUntil = 0;
+
+    function scrollMode(): 'snap' | 'free' {
+        return PdfState.isSnapMode && !snapSuspended ? 'snap' : 'free';
+    }
+
+    function viewportHeight(): number {
+        return deps.getScrollContainer()?.clientHeight ?? 0;
+    }
+
+    function alignedTopForPage(page: number): number {
+        const top = deps.getPageTop(page);
+        const viewport = viewportHeight();
+        const height = deps.getPageHeight(page);
+        if (viewport <= 0 || height >= viewport) return Math.max(0, top);
+        return Math.max(0, top - (viewport - height) / 2);
+    }
+
+    function pageEndTop(page: number): number {
+        const viewport = viewportHeight();
+        const height = deps.getPageHeight(page);
+        const top = deps.getPageTop(page);
+        if (viewport <= 0 || height <= viewport) return alignedTopForPage(page);
+        return Math.max(0, top + height - viewport);
+    }
+
+    function pageIsLong(page: number): boolean {
+        const viewport = viewportHeight();
+        return viewport > 0 && deps.getPageHeight(page) > viewport + 4;
+    }
+
+    function topForPage(page: number): number {
+        return scrollMode() === 'snap' ? alignedTopForPage(page) : deps.getPageTop(page);
+    }
+
+    function setScrollTop(top: number) {
+        const scroll = deps.getScrollContainer();
+        if (!scroll) return;
+        const maxScroll = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
+        const target = Math.max(0, Math.min(maxScroll, top));
+        if (Math.abs(target - scroll.scrollTop) < 0.5) return;
+        scroll.style.scrollBehavior = 'auto';
+        scroll.scrollTop = target;
+        scroll.style.removeProperty('scroll-behavior');
+    }
+
+    function smoothScrollTo(top: number) {
+        const scroll = deps.getScrollContainer();
+        if (!scroll) return;
+        const maxScroll = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
+        scroll.scrollTo({ top: Math.max(0, Math.min(maxScroll, top)), behavior: 'smooth' });
+    }
+
+    function anchorAlignment(page: number) {
+        anchoredPage = scrollMode() === 'snap' && !pageIsLong(page) ? page : null;
+        anchorExpiresAt = performance.now() + SNAP_ANCHOR_TTL_MS;
+    }
+
+    function refreshSnapAnchor() {
+        if (anchoredPage === null) return;
+        if (scrollMode() !== 'snap' || performance.now() > anchorExpiresAt) {
+            anchoredPage = null;
+            return;
+        }
+        if (deps.currentPageAtViewport() !== anchoredPage) {
+            anchoredPage = null;
+            return;
+        }
+        setScrollTop(alignedTopForPage(anchoredPage));
+    }
 
     function clearSnapResumeHandler() {
         if (!resumeHandler) return;
-        window.removeEventListener('wheel', resumeHandler, { capture: true });
         window.removeEventListener('keydown', resumeHandler, { capture: true });
         resumeHandler = null;
     }
 
+    function isTypingTarget(target: EventTarget | null): boolean {
+        return target instanceof HTMLElement && (target.matches('input, textarea, select') || target.isContentEditable);
+    }
+
+    function resumeSnap() {
+        if (!PdfState.isSnapMode || !snapSuspended) return;
+        clearSnapResumeHandler();
+        snapSuspended = false;
+        anchoredPage = null;
+        deps.applyScrollMode();
+        window.dispatchEvent(new Event('qv:pdf-viewer-settings-changed'));
+    }
+
     function installSnapResumeHandler() {
-        const scroll = deps.getScrollContainer();
-        if (!scroll || !PdfState.isSnapMode || !snapSuspended || resumeHandler) return;
-        const resume = () => {
-            clearSnapResumeHandler();
-            snapSuspended = false;
-            const current = deps.getScrollContainer();
-            if (!current || !PdfState.isSnapMode) return;
-            current.classList.add('snap-y', 'snap-mandatory');
-            deps.applySnapClasses();
-            window.dispatchEvent(new Event('qv:pdf-viewer-settings-changed'));
+        if (!snapSuspended || resumeHandler) return;
+        const resume = (event: Event) => {
+            if (event instanceof KeyboardEvent) {
+                if (!SNAP_RESUME_KEYS.has(event.key.toLowerCase()) || isTypingTarget(event.target)) return;
+            }
+            resumeSnap();
         };
         resumeHandler = resume;
-        window.addEventListener('wheel', resume, { capture: true, passive: true });
         window.addEventListener('keydown', resume, { capture: true });
     }
 
     function suspendSnap() {
-        const scroll = deps.getScrollContainer();
-        if (!PdfState.isSnapMode || snapSuspended || !scroll || !scroll.classList.contains('snap-mandatory')) return;
+        if (scrollMode() !== 'snap') return;
         snapSuspended = true;
-        scroll.classList.remove('snap-y', 'snap-mandatory');
+        anchoredPage = null;
         installSnapResumeHandler();
+        deps.applyScrollMode();
         window.dispatchEvent(new Event('qv:pdf-viewer-settings-changed'));
     }
 
@@ -62,14 +148,11 @@ export function createPdfNavigation(deps: NavigationDependencies) {
         PdfState.sidebarFollow = settings.sidebarFollow;
         clearSnapResumeHandler();
         snapSuspended = settings.snapSuspended && settings.isSnapMode;
+        anchoredPage = null;
         setSidebarFollowLabel(PdfState.sidebarFollow);
         updateScrollModeClasses(PdfState.isSnapMode);
-        const scroll = deps.getScrollContainer();
-        if (snapSuspended && scroll) {
-            scroll.classList.remove('snap-y', 'snap-mandatory');
-            installSnapResumeHandler();
-        }
-        deps.applySnapClasses();
+        if (snapSuspended) installSnapResumeHandler();
+        deps.applyScrollMode();
         window.dispatchEvent(new Event('qv:pdf-viewer-settings-changed'));
     }
 
@@ -77,6 +160,7 @@ export function createPdfNavigation(deps: NavigationDependencies) {
         if (!Number.isFinite(scale) || scale <= 0) return;
         PdfState.currentScale = scale;
         PdfState.zoomMode = mode;
+        anchoredPage = null;
         if (DOM.zoomLevelSpan) DOM.zoomLevelSpan.value = `${Math.round(scale * 100)}%`;
         window.dispatchEvent(new Event('qv:pdf-viewer-settings-changed'));
     }
@@ -93,12 +177,21 @@ export function createPdfNavigation(deps: NavigationDependencies) {
 
     function scrollTopForLocation(location: PdfLocation): number {
         const page = Math.min(deps.getPageCount(), Math.max(1, location.page));
+        const scroll = deps.getScrollContainer();
+        const maxScroll = Math.max(0, (scroll?.scrollHeight ?? 0) - (scroll?.clientHeight ?? 0));
+        if (scrollMode() === 'snap') {
+            const viewport = viewportHeight();
+            const height = deps.getPageHeight(page);
+            const target =
+                pageIsLong(page) && location.fraction > 0
+                    ? deps.getPageTop(page) + location.fraction * (height - viewport)
+                    : alignedTopForPage(page);
+            return Math.max(0, Math.min(maxScroll, target));
+        }
         const sameScale = Math.abs(PdfState.currentScale - location.scale) < 0.001;
         const target = sameScale
             ? location.scrollTop
             : deps.getPageTop(page) + location.fraction * deps.getPageHeight(page);
-        const scroll = deps.getScrollContainer();
-        const maxScroll = Math.max(0, (scroll?.scrollHeight ?? 0) - (scroll?.clientHeight ?? 0));
         return Math.max(0, Math.min(maxScroll, target));
     }
 
@@ -107,9 +200,8 @@ export function createPdfNavigation(deps: NavigationDependencies) {
         if (!location || !scroll || deps.getPageCount() === 0) return;
         deps.mountAroundPage(location.page);
         deps.ensureGeometry();
-        scroll.style.scrollBehavior = 'auto';
-        scroll.scrollTop = scrollTopForLocation(location);
-        scroll.style.removeProperty('scroll-behavior');
+        setScrollTop(scrollTopForLocation(location));
+        anchorAlignment(Math.min(deps.getPageCount(), Math.max(1, location.page)));
     }
 
     function restorePosition(location: PdfLocation | null) {
@@ -120,9 +212,8 @@ export function createPdfNavigation(deps: NavigationDependencies) {
         if (!scroll || pageCount === 0) return;
         deps.mountAroundPage(page);
         deps.ensureGeometry();
-        scroll.style.scrollBehavior = 'auto';
-        scroll.scrollTop = scrollTopForLocation(location);
-        scroll.style.removeProperty('scroll-behavior');
+        setScrollTop(scrollTopForLocation(location));
+        anchorAlignment(page);
         if (DOM.pageCounter) {
             DOM.pageCounter.value = String(page);
             DOM.pageCounter.dataset.current = String(page);
@@ -137,19 +228,17 @@ export function createPdfNavigation(deps: NavigationDependencies) {
         if (!scroll || pageCount === 0 || !PdfState.currentPdfDoc) return;
         const page = Math.min(pageCount, Math.max(1, Math.round(pageNumber)));
         deps.mountAroundPage(page);
-        const apply = () => {
-            const current = deps.getScrollContainer();
-            if (!current) return;
-            current.style.scrollBehavior = 'auto';
-            current.scrollTop = deps.getPageTop(page);
-            current.style.removeProperty('scroll-behavior');
-        };
-        apply();
+        deps.ensureGeometry();
+        setScrollTop(topForPage(page));
+        anchorAlignment(page);
         deps.scheduleRender();
         if (deps.isPageMeasured(page)) return;
-        void Promise.all([deps.measurePage(page), deps.waitForMeasurement()]).then(() => {
-            if (!PdfState.currentPdfDoc || Math.abs(deps.currentPageAtViewport() - page) > 3) return;
-            apply();
+        void deps.measureAround(page).then(() => {
+            if (!PdfState.currentPdfDoc) return;
+            if (Math.abs(deps.currentPageAtViewport() - page) > REALIGN_PAGE_TOLERANCE) return;
+            deps.ensureGeometry();
+            setScrollTop(topForPage(page));
+            anchorAlignment(page);
         });
     }
 
@@ -159,31 +248,99 @@ export function createPdfNavigation(deps: NavigationDependencies) {
         const page = Math.max(1, Math.min(pageCount, Math.round(pageNumber)));
         deps.mountAroundPage(page);
         deps.scheduleRender();
+        const precise = yCss !== null && yCss > 0;
+
         const jump = () => {
             const target = document.getElementById(`page-container-${page}`);
             const scroll = deps.getScrollContainer();
             if (!target || !scroll) return;
+            if (!precise && scrollMode() === 'snap') {
+                deps.ensureGeometry();
+                setScrollTop(topForPage(page));
+                anchorAlignment(page);
+                return;
+            }
             const pageRect = target.getBoundingClientRect();
             const pageHeight = pageRect.height || deps.getPageHeight(page);
             const y = yCss == null ? (center ? pageHeight / 2 : 0) : Math.max(0, Math.min(yCss, pageHeight - 1));
             const base = pageRect.top - scroll.getBoundingClientRect().top + scroll.scrollTop;
             const top = center ? Math.max(0, base + y - scroll.clientHeight / 2) : base + y;
-            if (yCss !== null && y > 0) suspendSnap();
+            if (precise) suspendSnap();
             const distance = Math.abs(top - scroll.scrollTop);
-            if (distance > (scroll.clientHeight || 1) * 1.5) {
-                scroll.style.scrollBehavior = 'auto';
-                scroll.scrollTop = top;
-                scroll.style.removeProperty('scroll-behavior');
-            } else {
-                scroll.scrollTo({ top, behavior: 'smooth' });
-            }
+            if (distance > (scroll.clientHeight || 1) * 1.5) setScrollTop(top);
+            else smoothScrollTo(top);
         };
         jump();
         if (deps.isPageMeasured(page)) return;
-        void Promise.all([deps.measurePage(page), deps.waitForMeasurement()]).then(() => {
-            if (!PdfState.currentPdfDoc || Math.abs(deps.currentPageAtViewport() - page) > 3) return;
+        void deps.measureAround(page).then(() => {
+            if (!PdfState.currentPdfDoc) return;
+            if (Math.abs(deps.currentPageAtViewport() - page) > REALIGN_PAGE_TOLERANCE) return;
             jump();
         });
+    }
+
+    function stepPage(direction: number) {
+        if (scrollMode() !== 'snap') return;
+        const scroll = deps.getScrollContainer();
+        const pageCount = deps.getPageCount();
+        if (!scroll || pageCount === 0 || !PdfState.currentPdfDoc) return;
+        const current = Math.min(pageCount, Math.max(1, deps.currentPageAtViewport()));
+        const viewport = viewportHeight() || 1;
+
+        if (pageIsLong(current)) {
+            const top = deps.getPageTop(current);
+            const last = pageEndTop(current);
+            const target = scroll.scrollTop + direction * viewport * 0.9;
+            if (target > top - 0.5 && target < last + 0.5) {
+                setScrollTop(target);
+                return;
+            }
+        }
+
+        const next = Math.min(pageCount, Math.max(1, current + direction));
+        if (next === current) return;
+        deps.mountAroundPage(next);
+        deps.ensureGeometry();
+        setScrollTop(direction < 0 ? pageEndTop(next) : alignedTopForPage(next));
+        anchorAlignment(next);
+        deps.scheduleRender();
+    }
+
+    function normalizeWheelDelta(event: WheelEvent): number {
+        if (event.deltaMode === 1) return event.deltaY * 16;
+        if (event.deltaMode === 2) return event.deltaY * (viewportHeight() || 400);
+        return event.deltaY;
+    }
+
+    function handleWheel(event: WheelEvent) {
+        if (!PdfState.isSnapMode || event.ctrlKey || event.metaKey || event.altKey || event.deltaY === 0) return;
+        const scroll = deps.getScrollContainer();
+        if (!scroll || deps.getPageCount() === 0) return;
+        if (snapSuspended) resumeSnap();
+
+        event.preventDefault();
+        wheelAccumulator += normalizeWheelDelta(event);
+        const now = performance.now();
+        if (now < wheelLockUntil) return;
+        if (Math.abs(wheelAccumulator) < WHEEL_STEP_DISTANCE) return;
+        const direction = wheelAccumulator > 0 ? 1 : -1;
+        wheelAccumulator = 0;
+        wheelLockUntil = now + WHEEL_STEP_COOLDOWN_MS;
+        stepPage(direction);
+    }
+
+    function attachScrollContainer(scroll: HTMLElement) {
+        detachScrollContainer();
+        wheelContainer = scroll;
+        wheelContainer.addEventListener('wheel', handleWheel, { passive: false });
+    }
+
+    function detachScrollContainer() {
+        wheelContainer?.removeEventListener('wheel', handleWheel);
+        wheelContainer = null;
+        wheelAccumulator = 0;
+        wheelLockUntil = 0;
+        anchoredPage = null;
     }
 
     function setSidebarFollowSuppressed(value: boolean) {
@@ -199,21 +356,27 @@ export function createPdfNavigation(deps: NavigationDependencies) {
 
     function reset() {
         clearSnapResumeHandler();
+        detachScrollContainer();
         snapSuspended = false;
         followSuppressed = false;
     }
 
     return {
         applySettings,
+        attachScrollContainer,
         captureLocation,
+        detachScrollContainer,
         goToPage,
         isSnapSuspended: () => snapSuspended,
         jumpToPage,
+        refreshSnapAnchor,
+        resumeSnap,
         restorePosition,
         restoreScrollPosition,
         scrollTopForLocation,
         setSidebarFollowSuppressed,
         setZoom,
+        stepPage,
         toggleSidebarFollow,
         reset,
         isFollowSuppressed: () => followSuppressed,

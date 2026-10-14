@@ -5,7 +5,8 @@
     "dependencies": {
         "katex": "^0.18.9",
         "markdown-it": "^15.0.2",
-        "markdown-it-texmath": "^1.0.0"
+        "markdown-it-texmath": "^1.0.0",
+        "pdfjs-dist": "4.10.38"
     },
     "devDependencies": {
         "@eslint/js": "^10.0.1",

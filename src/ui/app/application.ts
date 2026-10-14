@@ -19,6 +19,12 @@ export async function startApplication() {
     initWindowChrome();
     initColorSchemes();
 
+    const warmPdfEngine = () => {
+        void import('../../rendering/pdf/pdfjs.js').then((module) => module.loadPdfjs()).catch(() => {});
+    };
+    if (typeof requestIdleCallback === 'function') requestIdleCallback(warmPdfEngine, { timeout: 1500 });
+    else setTimeout(warmPdfEngine, 300);
+
     const documents = createDocumentController();
     documents.attachViewerStateListeners();
     bindViewerControls({ openDocument: documents.openDocument, onStateChanged: documents.scheduleViewerStateSave });

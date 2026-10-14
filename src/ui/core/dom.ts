@@ -110,15 +110,15 @@ export function setSidebarTab(tab: 'previews' | 'sections') {
     window.dispatchEvent(new Event('qv:sidebar-tab-changed'));
 }
 
+export type ScrollMode = 'snap' | 'free';
+
+export function getScrollMode(container: HTMLElement | null | undefined): ScrollMode {
+    return container?.dataset.scrollMode === 'snap' ? 'snap' : 'free';
+}
+
 export function updateScrollModeClasses(isSnapMode: boolean) {
-    const scrollContainer = document.getElementById('pdf-scroll-container');
     if (!DOM.toggleScrollModeBtn) return;
-
     DOM.toggleScrollModeBtn.innerText = `Mode: ${isSnapMode ? 'Snap' : 'Free'}`;
-    if (!scrollContainer) return;
-
-    scrollContainer.classList.toggle('snap-y', isSnapMode);
-    scrollContainer.classList.toggle('snap-mandatory', isSnapMode);
 }
 
 export function initSidebarResizer() {
