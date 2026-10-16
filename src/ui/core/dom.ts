@@ -11,6 +11,7 @@ export const DOM = {} as {
     mainContentNode: HTMLElement;
     pdfTools: HTMLElement;
     toggleScrollModeBtn: HTMLButtonElement;
+    toggleSpreadModeBtn: HTMLButtonElement;
     zoomInBtn: HTMLButtonElement;
     zoomOutBtn: HTMLButtonElement;
     zoomLevelSpan: HTMLInputElement;
@@ -41,6 +42,7 @@ export function initDOM() {
     DOM.mainContentNode = requireElement('main-content');
     DOM.pdfTools = requireElement('pdf-tools');
     DOM.toggleScrollModeBtn = requireElement('toggle-scroll-mode');
+    DOM.toggleSpreadModeBtn = requireElement('toggle-spread-mode');
     DOM.zoomInBtn = requireElement('zoom-in');
     DOM.zoomOutBtn = requireElement('zoom-out');
     DOM.zoomLevelSpan = requireElement('zoom-level');
@@ -69,20 +71,32 @@ export function setSavedSidebarWidth(width: number) {
     if (DOM.sidebar && DOM.sidebar.style.width !== '0px') DOM.sidebar.style.width = savedSidebarWidth;
 }
 
-export function toggleSidebar(forceState?: 'open' | 'closed') {
+const SIDEBAR_TRANSITION_CLASSES = ['transition-[width]', 'duration-300'];
+
+export function toggleSidebar(forceState?: 'open' | 'closed', animate = true) {
     if (!DOM.sidebar) return;
 
     const isClosed = DOM.sidebar.style.width === '0px';
+    const applyWidth = (width: string) => {
+        if (animate) {
+            DOM.sidebar.style.width = width;
+            return;
+        }
+        DOM.sidebar.classList.remove(...SIDEBAR_TRANSITION_CLASSES);
+        DOM.sidebar.style.width = width;
+        void DOM.sidebar.offsetWidth;
+        DOM.sidebar.classList.add(...SIDEBAR_TRANSITION_CLASSES);
+    };
 
     if (forceState === 'open' || (!forceState && isClosed)) {
-        DOM.sidebar.style.width = savedSidebarWidth;
+        applyWidth(savedSidebarWidth);
         window.dispatchEvent(new CustomEvent('qv:sidebar-toggled', { detail: { opened: true } }));
         window.dispatchEvent(new Event('qv:sidebar-width-changed'));
     } else {
         if (!isClosed) {
             savedSidebarWidth = DOM.sidebar.style.width || '280px';
         }
-        DOM.sidebar.style.width = '0px';
+        applyWidth('0px');
         window.dispatchEvent(new CustomEvent('qv:sidebar-toggled', { detail: { opened: false } }));
         window.dispatchEvent(new Event('qv:sidebar-width-changed'));
     }
@@ -119,6 +133,12 @@ export function getScrollMode(container: HTMLElement | null | undefined): Scroll
 export function updateScrollModeClasses(isSnapMode: boolean) {
     if (!DOM.toggleScrollModeBtn) return;
     DOM.toggleScrollModeBtn.innerText = `Mode: ${isSnapMode ? 'Snap' : 'Free'}`;
+}
+
+export function updateSpreadModeClasses(isSpreadMode: boolean) {
+    if (!DOM.toggleSpreadModeBtn) return;
+    DOM.toggleSpreadModeBtn.innerText = `Book: ${isSpreadMode ? 'On' : 'Off'}`;
+    DOM.toggleSpreadModeBtn.setAttribute('aria-pressed', String(isSpreadMode));
 }
 
 export function initSidebarResizer() {

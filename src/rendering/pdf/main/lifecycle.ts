@@ -13,6 +13,7 @@ export function createPdfLifecycle(state: PdfViewerState, services: ReturnType<t
         if (!keepPosition) {
             PdfState.currentScale = 1;
             PdfState.isSnapMode = false;
+            PdfState.isSpreadMode = false;
             PdfState.sidebarFollow = true;
         }
         resetSearchState();

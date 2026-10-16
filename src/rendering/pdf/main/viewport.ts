@@ -109,6 +109,7 @@ export function createPdfViewport(deps: PdfViewportDependencies) {
         scrollSettleTimer = setTimeout(() => {
             scrollSettleTimer = null;
             renderVisibleWindow();
+            deps.navigation.alignToSpread();
         }, 200);
     }
 

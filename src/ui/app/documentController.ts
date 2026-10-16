@@ -87,8 +87,14 @@ export function createDocumentController() {
             restoreCommonViewerSettings(viewerState, false);
         } else if (incoming.type === 'pdf' && !sameDocument) {
             PdfState.isSnapMode = false;
+            PdfState.isSpreadMode = false;
             PdfState.sidebarFollow = true;
-            applyPdfViewerSettings({ isSnapMode: false, snapSuspended: false, sidebarFollow: true });
+            applyPdfViewerSettings({
+                isSnapMode: false,
+                snapSuspended: false,
+                sidebarFollow: true,
+                isSpreadMode: false,
+            });
             setPdfZoom(1, 'auto');
             toggleSidebar('open');
             setSidebarTab('previews');
@@ -99,6 +105,7 @@ export function createDocumentController() {
             incoming.type === 'pdf'
                 ? {
                       isSnapMode: PdfState.isSnapMode,
+                      isSpreadMode: PdfState.isSpreadMode,
                       sidebarFollow: PdfState.sidebarFollow,
                       suspended: isSnapSuspended(),
                   }
@@ -140,9 +147,16 @@ export function createDocumentController() {
             const untouched =
                 !!settingsAtLoadStart &&
                 settingsAtLoadStart.isSnapMode === PdfState.isSnapMode &&
+                settingsAtLoadStart.isSpreadMode === PdfState.isSpreadMode &&
                 settingsAtLoadStart.sidebarFollow === PdfState.sidebarFollow &&
                 settingsAtLoadStart.suspended === isSnapSuspended();
-            if (untouched) applyPdfViewerSettings({ isSnapMode: false, snapSuspended: false, sidebarFollow: true });
+            if (untouched)
+                applyPdfViewerSettings({
+                    isSnapMode: false,
+                    snapSuspended: false,
+                    sidebarFollow: true,
+                    isSpreadMode: false,
+                });
         } else if (viewerState?.documentType === incoming.type) {
             if (incoming.type === 'html') restoreHtmlViewerState(viewerState);
             else restoreMarkdownViewerState(viewerState);

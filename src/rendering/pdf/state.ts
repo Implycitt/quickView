@@ -5,6 +5,7 @@ export const PdfState = {
     currentPdfDoc: null as PdfDocumentLike | null,
     currentScale: 1.0,
     isSnapMode: false,
+    isSpreadMode: false,
     zoomMode: 'auto' as ZoomMode,
     sidebarFollow: true,
 };

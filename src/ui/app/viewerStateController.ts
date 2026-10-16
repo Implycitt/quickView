@@ -21,6 +21,7 @@ export function captureViewerState(active: ActiveViewerDocument): StoredViewerSt
         documentType: active.type,
         zoomMode: active.type === 'pdf' ? PdfState.zoomMode : 'auto',
         isSnapMode: PdfState.isSnapMode,
+        isSpreadMode: PdfState.isSpreadMode,
         snapSuspended: isSnapSuspended(),
         sidebarFollow: PdfState.sidebarFollow,
         sidebarOpen: !!DOM.sidebar && DOM.sidebar.style.width !== '0px',
@@ -48,8 +49,8 @@ export function restoreCommonViewerSettings(state: StoredViewerState | null, res
     setSavedSidebarWidth(state.sidebarWidth);
     setSidebarTab(state.sidebarTab);
     const sidebarIsOpen = !!DOM.sidebar && DOM.sidebar.style.width !== '0px';
-    if (!state.sidebarOpen && sidebarIsOpen) toggleSidebar('closed');
-    else if (state.sidebarOpen && !sidebarIsOpen) toggleSidebar('open');
+    if (!state.sidebarOpen && sidebarIsOpen) toggleSidebar('closed', false);
+    else if (state.sidebarOpen && !sidebarIsOpen) toggleSidebar('open', false);
     if (restoreSidebarScroll && DOM.sidebar) DOM.sidebar.scrollTop = state.sidebarScrollTop;
 }
 
@@ -94,5 +95,6 @@ export function attachViewerStateListeners(scheduleSave: () => void, capture: ()
     }
     DOM.zoomLevelSpan?.addEventListener('change', scheduleSave);
     DOM.toggleScrollModeBtn?.addEventListener('click', scheduleSave);
+    DOM.toggleSpreadModeBtn?.addEventListener('click', scheduleSave);
     DOM.sidebarFollowBtn?.addEventListener('click', scheduleSave);
 }

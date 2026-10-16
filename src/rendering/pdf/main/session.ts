@@ -1,7 +1,7 @@
-import { DOM } from '../../../ui/core/dom.js';
+import { DOM, updateSpreadModeClasses } from '../../../ui/core/dom.js';
 import type { PdfLocation } from '../../../viewer/state.js';
 import type { PdfDocumentLike, PdfPageLike } from '../types.js';
-import type { PdfPageLayout } from '../layout.js';
+import { SPREAD_PAGE_GAP, type PdfPageLayout } from '../layout.js';
 import type { createPdfNavigation } from '../navigation.js';
 import type { createPdfOutline } from '../outline/controller.js';
 import type { MainPageRenderer } from './renderQueue.js';
@@ -13,6 +13,8 @@ interface PdfMainSessionDependencies {
     getScale: () => number;
     setScale: (scale: number) => void;
     isAutoZoom: () => boolean;
+    isSpreadMode: () => boolean;
+    setSpreadMode: (enabled: boolean) => void;
     getSavedPosition: () => PdfLocation | null;
     setSavedPosition: (location: PdfLocation | null) => void;
     getPendingRestore: () => PdfLocation | null;
@@ -30,6 +32,7 @@ export function createPdfMainSession(deps: PdfMainSessionDependencies) {
     let viewerVersion = 0;
     let mainRenderInFlight: Promise<void> | null = null;
     let finishMeasurementTimer: ReturnType<typeof setTimeout> | null = null;
+    let fitWidth = 0;
 
     function resetViewer() {
         viewerVersion++;
@@ -71,7 +74,14 @@ export function createPdfMainSession(deps: PdfMainSessionDependencies) {
         try {
             const firstPage = await doc.getPage(1);
             if (version !== viewerVersion) return;
-            if (deps.isAutoZoom()) deps.setScale(getFitToScreenScale(firstPage, content));
+            const spreadPages =
+                deps.isSpreadMode() && total > 1 ? [firstPage, await doc.getPage(2).catch(() => null)] : [firstPage];
+            if (version !== viewerVersion) return;
+            if (deps.isAutoZoom()) {
+                const pages = spreadPages.filter((page): page is PdfPageLike => !!page);
+                fitWidth = Math.round(content.clientWidth);
+                deps.setScale(getFitToScreenScale(pages, content));
+            }
             const viewport = firstPage.getViewport({ scale: 1 });
             deps.layout.setPlaceholderPoints({ width: viewport.width, height: viewport.height });
             deps.layout.setPagePoints(1, { width: viewport.width, height: viewport.height });
@@ -140,19 +150,31 @@ export function createPdfMainSession(deps: PdfMainSessionDependencies) {
         return trackedRun;
     }
 
-    function getFitToScreenScale(page: PdfPageLike, container: HTMLElement): number {
-        const viewport = page.getViewport({ scale: 1 });
+    function getFitToScreenScale(pages: PdfPageLike[], container: HTMLElement): number {
+        const viewports = pages.map((page) => page.getViewport({ scale: 1 }));
         const padding = 64;
+        const gap = pages.length > 1 ? SPREAD_PAGE_GAP : 0;
+        const width = viewports.reduce((total, viewport) => total + viewport.width, 0) + gap;
+        const height = viewports.reduce((tallest, viewport) => Math.max(tallest, viewport.height), 0);
         return Math.max(
             0.1,
-            Math.min(
-                (container.clientWidth - padding) / viewport.width,
-                (container.clientHeight - padding) / viewport.height,
-            ),
+            Math.min((container.clientWidth - padding) / width, (container.clientHeight - padding) / height),
         );
     }
 
+    function applySpreadMode(enabled: boolean) {
+        if (deps.isSpreadMode() === enabled) return;
+        deps.setSpreadMode(enabled);
+        updateSpreadModeClasses(enabled);
+        window.dispatchEvent(new Event('qv:pdf-viewer-settings-changed'));
+        if (!deps.getDocument()) return;
+        deps.setSavedPosition(deps.viewport.captureScrollPos() ?? deps.getSavedPosition());
+        void renderAllMainPages();
+    }
+
     return {
+        applySpreadMode,
+        getFitWidth: () => fitWidth,
         getViewerVersion: () => viewerVersion,
         renderAllMainPages,
         resetViewer,

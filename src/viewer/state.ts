@@ -16,6 +16,7 @@ export interface StoredViewerState {
     markdownScrollTop?: number;
     zoomMode: ZoomMode;
     isSnapMode: boolean;
+    isSpreadMode?: boolean;
     snapSuspended: boolean;
     sidebarFollow: boolean;
     sidebarOpen: boolean;
@@ -67,6 +68,7 @@ function isStoredViewerState(value: unknown): value is StoredViewerState {
         (state.documentType !== 'pdf' && state.documentType !== 'markdown' && state.documentType !== 'html') ||
         (state.zoomMode !== 'auto' && state.zoomMode !== 'manual') ||
         typeof state.isSnapMode !== 'boolean' ||
+        (state.isSpreadMode !== undefined && typeof state.isSpreadMode !== 'boolean') ||
         typeof state.snapSuspended !== 'boolean' ||
         typeof state.sidebarFollow !== 'boolean' ||
         typeof state.sidebarOpen !== 'boolean' ||

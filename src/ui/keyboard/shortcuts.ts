@@ -26,6 +26,10 @@ const SHORTCUTS: Record<string, (event: KeyboardEvent) => void> = {
         event.preventDefault();
         DOM.toggleScrollModeBtn?.click();
     },
+    b: (event) => {
+        event.preventDefault();
+        DOM.toggleSpreadModeBtn?.click();
+    },
     s: (event) => {
         event.preventDefault();
         toggleSidebar();

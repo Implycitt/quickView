@@ -1,4 +1,6 @@
+import { DOM } from '../core/dom.js';
 import {
+    getPdfFitWidth,
     refreshSidebarSync,
     renderAllMainPages,
     renderThumbnails,
@@ -6,6 +8,9 @@ import {
     whenMainRenderIdle,
 } from '../../rendering/pdf/renderer.js';
 import { PdfState } from '../../rendering/pdf/state.js';
+
+const CONTENT_REFIT_DELAY_MS = 300;
+const CONTENT_WIDTH_TOLERANCE = 4;
 
 interface ResizeDependencies {
     scheduleViewerStateSave: () => void;
@@ -40,6 +45,23 @@ export function installViewerResizeHandlers({ scheduleViewerStateSave }: ResizeD
             scheduleViewerStateSave();
         });
     });
+
+    let contentTimer: ReturnType<typeof setTimeout> | null = null;
+    const refitToContentWidth = () => {
+        if (!PdfState.currentPdfDoc || PdfState.zoomMode !== 'auto') return;
+        if (Math.abs(DOM.mainContentNode.clientWidth - getPdfFitWidth()) < CONTENT_WIDTH_TOLERANCE) return;
+        if (contentTimer) clearTimeout(contentTimer);
+        contentTimer = setTimeout(async () => {
+            contentTimer = null;
+            setSidebarFollowSuppressed(true);
+            await renderAllMainPages();
+            renderThumbnails();
+            setSidebarFollowSuppressed(false);
+            refreshSidebarSync();
+            scheduleViewerStateSave();
+        }, CONTENT_REFIT_DELAY_MS);
+    };
+    if (typeof ResizeObserver !== 'undefined') new ResizeObserver(refitToContentWidth).observe(DOM.mainContentNode);
 
     let sidebarTimer: ReturnType<typeof setTimeout> | null = null;
     window.addEventListener('qv:sidebar-resized', () => {

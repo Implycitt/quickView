@@ -5,6 +5,7 @@ import {
     renderAllMainPages,
     renderThumbnails,
     refreshSidebarSync,
+    setPdfSpreadMode,
     toggleSidebarFollow,
 } from '../../rendering/pdf/renderer.js';
 import { PdfState } from '../../rendering/pdf/state.js';
@@ -55,7 +56,12 @@ export function bindViewerControls({ openDocument, onStateChanged }: ViewerContr
             isSnapMode: PdfState.isSnapMode,
             snapSuspended: false,
             sidebarFollow: PdfState.sidebarFollow,
+            isSpreadMode: PdfState.isSpreadMode,
         });
+        onStateChanged();
+    });
+    DOM.toggleSpreadModeBtn?.addEventListener('click', () => {
+        setPdfSpreadMode(!PdfState.isSpreadMode);
         onStateChanged();
     });
     DOM.zoomInBtn?.addEventListener('click', () => {

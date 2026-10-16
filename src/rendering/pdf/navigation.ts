@@ -1,4 +1,4 @@
-import { DOM, setSidebarFollowLabel, updateScrollModeClasses } from '../../ui/core/dom.js';
+import { DOM, setSidebarFollowLabel, updateScrollModeClasses, updateSpreadModeClasses } from '../../ui/core/dom.js';
 import { scrollInstantly } from '../../ui/core/scroll.js';
 import { PdfState } from './state.js';
 import type { PdfLocation } from '../../viewer/state.js';
@@ -14,6 +14,8 @@ interface NavigationDependencies {
     getPageCount: () => number;
     getPageTop: (page: number) => number;
     getPageHeight: (page: number) => number;
+    getRowHeight: (page: number) => number;
+    getRowStart: (page: number, rowOffset: number) => number;
     isPageMeasured: (page: number) => boolean;
     mountAroundPage: (page: number) => void;
     ensureGeometry: () => void;
@@ -46,14 +48,14 @@ export function createPdfNavigation(deps: NavigationDependencies) {
     function alignedTopForPage(page: number): number {
         const top = deps.getPageTop(page);
         const viewport = viewportHeight();
-        const height = deps.getPageHeight(page);
+        const height = deps.getRowHeight(page);
         if (viewport <= 0 || height >= viewport) return Math.max(0, top);
         return Math.max(0, top - (viewport - height) / 2);
     }
 
     function pageEndTop(page: number): number {
         const viewport = viewportHeight();
-        const height = deps.getPageHeight(page);
+        const height = deps.getRowHeight(page);
         const top = deps.getPageTop(page);
         if (viewport <= 0 || height <= viewport) return alignedTopForPage(page);
         return Math.max(0, top + height - viewport);
@@ -61,7 +63,7 @@ export function createPdfNavigation(deps: NavigationDependencies) {
 
     function pageIsLong(page: number): boolean {
         const viewport = viewportHeight();
-        return viewport > 0 && deps.getPageHeight(page) > viewport + 4;
+        return viewport > 0 && deps.getRowHeight(page) > viewport + 4;
     }
 
     function topForPage(page: number): number {
@@ -75,7 +77,7 @@ export function createPdfNavigation(deps: NavigationDependencies) {
     }
 
     function anchorAlignment(page: number) {
-        anchoredPage = scrollMode() === 'snap' && !pageIsLong(page) ? page : null;
+        anchoredPage = scrollMode() === 'snap' && !pageIsLong(page) ? deps.getRowStart(page, 0) : null;
         anchorExpiresAt = performance.now() + SNAP_ANCHOR_TTL_MS;
     }
 
@@ -132,14 +134,21 @@ export function createPdfNavigation(deps: NavigationDependencies) {
         window.dispatchEvent(new Event('qv:pdf-viewer-settings-changed'));
     }
 
-    function applySettings(settings: { isSnapMode: boolean; snapSuspended: boolean; sidebarFollow: boolean }) {
+    function applySettings(settings: {
+        isSnapMode: boolean;
+        snapSuspended: boolean;
+        sidebarFollow: boolean;
+        isSpreadMode: boolean;
+    }) {
         PdfState.isSnapMode = settings.isSnapMode;
         PdfState.sidebarFollow = settings.sidebarFollow;
+        PdfState.isSpreadMode = settings.isSpreadMode;
         clearSnapResumeHandler();
         snapSuspended = settings.snapSuspended && settings.isSnapMode;
         anchoredPage = null;
         setSidebarFollowLabel(PdfState.sidebarFollow);
         updateScrollModeClasses(PdfState.isSnapMode);
+        updateSpreadModeClasses(PdfState.isSpreadMode);
         if (snapSuspended) installSnapResumeHandler();
         deps.applyScrollMode();
         window.dispatchEvent(new Event('qv:pdf-viewer-settings-changed'));
@@ -159,7 +168,7 @@ export function createPdfNavigation(deps: NavigationDependencies) {
         if (!scroll || deps.getPageCount() === 0) return saved;
         const scrollTop = scroll.scrollTop;
         const page = deps.currentPageAtViewport();
-        const height = deps.getPageHeight(page) || 1;
+        const height = deps.getRowHeight(page) || 1;
         const fraction = Math.max(0, Math.min(1, (scrollTop - deps.getPageTop(page)) / height));
         return { page, fraction, scrollTop, scale: PdfState.currentScale };
     }
@@ -170,7 +179,7 @@ export function createPdfNavigation(deps: NavigationDependencies) {
         const maxScroll = Math.max(0, (scroll?.scrollHeight ?? 0) - (scroll?.clientHeight ?? 0));
         if (scrollMode() === 'snap') {
             const viewport = viewportHeight();
-            const height = deps.getPageHeight(page);
+            const height = deps.getRowHeight(page);
             const target =
                 pageIsLong(page) && location.fraction > 0
                     ? deps.getPageTop(page) + location.fraction * (height - viewport)
@@ -180,7 +189,7 @@ export function createPdfNavigation(deps: NavigationDependencies) {
         const sameScale = Math.abs(PdfState.currentScale - location.scale) < 0.001;
         const target = sameScale
             ? location.scrollTop
-            : deps.getPageTop(page) + location.fraction * deps.getPageHeight(page);
+            : deps.getPageTop(page) + location.fraction * deps.getRowHeight(page);
         return Math.max(0, Math.min(maxScroll, target));
     }
 
@@ -284,13 +293,22 @@ export function createPdfNavigation(deps: NavigationDependencies) {
             }
         }
 
-        const next = Math.min(pageCount, Math.max(1, current + direction));
+        const next = Math.min(pageCount, Math.max(1, deps.getRowStart(current, direction)));
         if (next === current) return;
         deps.mountAroundPage(next);
         deps.ensureGeometry();
         setScrollTop(direction < 0 ? pageEndTop(next) : alignedTopForPage(next));
         anchorAlignment(next);
         deps.scheduleRender();
+    }
+
+    function alignToSpread() {
+        if (!PdfState.isSpreadMode || snapSuspended) return;
+        const scroll = deps.getScrollContainer();
+        if (!scroll || deps.getPageCount() === 0) return;
+        const page = deps.currentPageAtViewport();
+        if (pageIsLong(page)) return;
+        setScrollTop(alignedTopForPage(page));
     }
 
     function normalizeWheelDelta(event: WheelEvent): number {
@@ -349,6 +367,7 @@ export function createPdfNavigation(deps: NavigationDependencies) {
     }
 
     return {
+        alignToSpread,
         applySettings,
         attachScrollContainer,
         captureLocation,
