@@ -5,6 +5,7 @@ import { initSearch } from '../../rendering/search/controller.js';
 import { createDocumentController } from './documentController.js';
 import { bindViewerControls } from './viewerControls.js';
 import { installViewerResizeHandlers } from './viewerResize.js';
+import { installPdfMagnifier } from '../../rendering/pdf/magnifier.js';
 import { renderApplicationShell } from './shell.js';
 import { initColorSchemes } from './colorSchemes.js';
 
@@ -18,6 +19,7 @@ export async function startApplication() {
     initSearch();
     initWindowChrome();
     initColorSchemes();
+    installPdfMagnifier();
 
     const warmPdfEngine = () => {
         void import('../../rendering/pdf/pdfjs.js').then((module) => module.loadPdfjs()).catch(() => {});

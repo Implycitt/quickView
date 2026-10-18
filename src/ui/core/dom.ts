@@ -12,6 +12,7 @@ export const DOM = {} as {
     pdfTools: HTMLElement;
     toggleScrollModeBtn: HTMLButtonElement;
     toggleSpreadModeBtn: HTMLButtonElement;
+    magnifierToggleBtn: HTMLButtonElement;
     zoomInBtn: HTMLButtonElement;
     zoomOutBtn: HTMLButtonElement;
     zoomLevelSpan: HTMLInputElement;
@@ -43,6 +44,7 @@ export function initDOM() {
     DOM.pdfTools = requireElement('pdf-tools');
     DOM.toggleScrollModeBtn = requireElement('toggle-scroll-mode');
     DOM.toggleSpreadModeBtn = requireElement('toggle-spread-mode');
+    DOM.magnifierToggleBtn = requireElement('toggle-magnifier');
     DOM.zoomInBtn = requireElement('zoom-in');
     DOM.zoomOutBtn = requireElement('zoom-out');
     DOM.zoomLevelSpan = requireElement('zoom-level');
@@ -139,6 +141,12 @@ export function updateSpreadModeClasses(isSpreadMode: boolean) {
     if (!DOM.toggleSpreadModeBtn) return;
     DOM.toggleSpreadModeBtn.innerText = `Book: ${isSpreadMode ? 'On' : 'Off'}`;
     DOM.toggleSpreadModeBtn.setAttribute('aria-pressed', String(isSpreadMode));
+}
+
+export function updateMagnifierClasses(isMagnifierMode: boolean) {
+    if (!DOM.magnifierToggleBtn) return;
+    DOM.magnifierToggleBtn.setAttribute('aria-pressed', String(isMagnifierMode));
+    document.body.classList.toggle('qv-magnifier-on', isMagnifierMode);
 }
 
 export function initSidebarResizer() {

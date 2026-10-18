@@ -36,6 +36,8 @@
 #page-counter:focus-visible,
 #sidebar-toggle:focus-visible,
 #toggle-scroll-mode:focus-visible,
+#toggle-spread-mode:focus-visible,
+#toggle-magnifier:focus-visible,
 #zoom-in:focus-visible,
 #zoom-out:focus-visible,
 #sidebar-follow-btn:focus-visible,
@@ -50,6 +52,12 @@
 #zoom-level:focus-visible,
 #page-counter:focus-visible {
     border-radius: 0.2rem;
+}
+
+#toggle-magnifier[aria-pressed='true'] {
+    border-color: var(--qv-accent);
+    background: color-mix(in srgb, var(--qv-accent) 16%, transparent);
+    color: var(--qv-accent);
 }
 
 .qv-document-sheet {

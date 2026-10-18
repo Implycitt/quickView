@@ -46,6 +46,10 @@ const SHORTCUTS: Record<string, (event: KeyboardEvent) => void> = {
         event.preventDefault();
         toggleSidebarFollow();
     },
+    i: (event) => {
+        event.preventDefault();
+        DOM.magnifierToggleBtn?.click();
+    },
     z: (event) => {
         event.preventDefault();
         DOM.zoomInBtn?.click();
