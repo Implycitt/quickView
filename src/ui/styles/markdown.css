@@ -41,6 +41,95 @@
     border-color: var(--qv-border);
 }
 
+.qv-document-prose pre {
+    border: 1px solid var(--qv-border);
+    border-radius: 0.5rem;
+}
+
+.qv-document-prose pre > code {
+    color: var(--qv-text);
+    background: transparent;
+    padding: 0;
+}
+
+.qv-document-prose .hljs-comment,
+.qv-document-prose .hljs-quote {
+    color: var(--qv-code-comment);
+    font-style: italic;
+}
+
+.qv-document-prose .hljs-keyword,
+.qv-document-prose .hljs-doctag,
+.qv-document-prose .hljs-literal,
+.qv-document-prose .hljs-name,
+.qv-document-prose .hljs-selector-tag,
+.qv-document-prose .hljs-template-tag {
+    color: var(--qv-code-keyword);
+}
+
+.qv-document-prose .hljs-string,
+.qv-document-prose .hljs-bullet,
+.qv-document-prose .hljs-regexp,
+.qv-document-prose .hljs-symbol {
+    color: var(--qv-code-string);
+}
+
+.qv-document-prose .hljs-number,
+.qv-document-prose .hljs-link,
+.qv-document-prose .hljs-char.escape_,
+.qv-document-prose .hljs-selector-attr,
+.qv-document-prose .hljs-selector-pseudo {
+    color: var(--qv-code-number);
+}
+
+.qv-document-prose .hljs-title,
+.qv-document-prose .hljs-section {
+    color: var(--qv-code-function);
+}
+
+.qv-document-prose .hljs-title.class_,
+.qv-document-prose .hljs-type,
+.qv-document-prose .hljs-built_in,
+.qv-document-prose .hljs-selector-class,
+.qv-document-prose .hljs-selector-id {
+    color: var(--qv-code-type);
+}
+
+.qv-document-prose .hljs-attr,
+.qv-document-prose .hljs-attribute,
+.qv-document-prose .hljs-property,
+.qv-document-prose .hljs-variable,
+.qv-document-prose .hljs-template-variable {
+    color: var(--qv-code-attribute);
+}
+
+.qv-document-prose .hljs-meta,
+.qv-document-prose .hljs-meta .hljs-keyword {
+    color: var(--qv-code-meta);
+}
+
+.qv-document-prose .hljs-punctuation,
+.qv-document-prose .hljs-operator,
+.qv-document-prose .hljs-subst {
+    color: var(--qv-code-punctuation);
+}
+
+.qv-document-prose .hljs-deletion {
+    color: var(--qv-code-deletion);
+}
+
+.qv-document-prose .hljs-addition {
+    color: var(--qv-code-string);
+}
+
+.qv-document-prose .hljs-emphasis {
+    font-style: italic;
+}
+
+.qv-document-prose .hljs-strong {
+    font-weight: 600;
+}
+
 .qv-document-prose :not(pre) > code {
     background-color: color-mix(in srgb, var(--qv-background) 82%, var(--qv-panel));
     border-radius: 0.25rem;

@@ -1,5 +1,6 @@
 import MarkdownIt from 'markdown-it';
 import { resolveMarkdownMedia } from './media.js';
+import { highlightCodeBlocks, isMathFenceLanguage, type FenceCodeBlock } from './syntaxHighlight.js';
 export { clearMdBreadcrumb, initMdBreadcrumb } from './breadcrumb.js';
 
 type MathEngine = typeof import('katex').default;
@@ -27,7 +28,7 @@ function createMarkdownRenderer(mathEngine?: MathEngine, texmathPlugin?: Texmath
     renderer.renderer.rules.fence = (tokens, idx, options, _env, slf) => {
         const token = tokens[idx];
         const lang = token.info.trim().toLowerCase();
-        if (mathEngine && (lang === 'latex' || lang === 'math')) {
+        if (mathEngine && isMathFenceLanguage(lang)) {
             try {
                 const math = mathEngine.renderToString(token.content.trim(), {
                     displayMode: true,
@@ -68,7 +69,136 @@ async function loadMathMarkdown(): Promise<MarkdownRenderer> {
     return mathMarkdownPromise;
 }
 
-export async function renderMarkdownWithCallouts(rawMarkdown: string, filePath = ''): Promise<string> {
+const VOID_ELEMENTS = new Set([
+    'area',
+    'base',
+    'br',
+    'col',
+    'embed',
+    'hr',
+    'img',
+    'input',
+    'link',
+    'meta',
+    'param',
+    'source',
+    'track',
+    'wbr',
+]);
+const RAW_TEXT_ELEMENTS = new Set(['script', 'style', 'textarea', 'title']);
+const TAG_NAME_CHARACTER = /[A-Za-z0-9:_-]/;
+const TASK_LIST_ITEM = /<li>\[([ xX])\]\s+/g;
+
+function scanHtmlTags(html: string, openElements: string[]) {
+    let index = 0;
+    while (index < html.length) {
+        const start = html.indexOf('<', index);
+        if (start < 0) return;
+        if (html.startsWith('<!--', start)) {
+            const end = html.indexOf('-->', start + 4);
+            index = end < 0 ? html.length : end + 3;
+            continue;
+        }
+        const marker = html[start + 1];
+        if (marker === undefined || marker === '!' || marker === '?') {
+            index = start + 1;
+            continue;
+        }
+
+        const closing = marker === '/';
+        let cursor = closing ? start + 2 : start + 1;
+        const nameStart = cursor;
+        while (cursor < html.length && TAG_NAME_CHARACTER.test(html[cursor])) cursor += 1;
+        const tagName = html.slice(nameStart, cursor).toLowerCase();
+        if (!tagName) {
+            index = start + 1;
+            continue;
+        }
+
+        let quote: string | null = null;
+        while (cursor < html.length) {
+            const character = html[cursor];
+            if (quote) {
+                if (character === quote) quote = null;
+            } else if (character === '"' || character === "'") {
+                quote = character;
+            } else if (character === '>') {
+                break;
+            }
+            cursor += 1;
+        }
+
+        const selfClosing = html[cursor - 1] === '/';
+        index = cursor + 1;
+        if (closing) {
+            const position = openElements.lastIndexOf(tagName);
+            if (position >= 0) openElements.length = position;
+            continue;
+        }
+        if (selfClosing || VOID_ELEMENTS.has(tagName)) continue;
+
+        openElements.push(tagName);
+        if (RAW_TEXT_ELEMENTS.has(tagName)) {
+            const match = new RegExp(`</${tagName}`, 'i').exec(html.slice(index));
+            if (match) index += match.index;
+        }
+    }
+}
+
+function finalizeChunk(html: string, filePath: string): string {
+    return resolveMarkdownMedia(html, filePath).replace(
+        TASK_LIST_ITEM,
+        (_match, checked: string) =>
+            `<li><input type="checkbox" disabled${checked.toLowerCase() === 'x' ? ' checked' : ''} class="mr-2 inline-block h-4 w-4 translate-y-0.5 accent-lavender-500" aria-label="${checked.toLowerCase() === 'x' ? 'checked' : 'unchecked'}">`,
+    );
+}
+
+function groupTopLevelTokens(tokens: ReturnType<MarkdownRenderer['parse']>): ReturnType<MarkdownRenderer['parse']>[] {
+    const groups: ReturnType<MarkdownRenderer['parse']>[] = [];
+    let group: ReturnType<MarkdownRenderer['parse']> = [];
+    let depth = 0;
+    for (const token of tokens) {
+        group.push(token);
+        depth += token.nesting;
+        if (depth > 0) continue;
+        groups.push(group);
+        group = [];
+    }
+    if (group.length > 0) groups.push(group);
+    return groups;
+}
+
+function highlightKey(language: string, code: string): string {
+    return `${language}\u0000${code}`;
+}
+
+function createHighlightLookup(blocks: FenceCodeBlock[], highlighted: string[]) {
+    const lookup = new Map<string, string>();
+    blocks.forEach((block, index) => {
+        const html = highlighted[index];
+        if (html) lookup.set(highlightKey(block.language, block.code), html);
+    });
+    return (code: string, language: string) => lookup.get(highlightKey(language, code)) ?? '';
+}
+
+function collectCodeBlocks(
+    md: MarkdownRenderer,
+    tokens: ReturnType<MarkdownRenderer['parse']>,
+    mathEnabled: boolean,
+): FenceCodeBlock[] {
+    const blocks: FenceCodeBlock[] = [];
+    for (const token of tokens) {
+        if (token.type !== 'fence') continue;
+        if (mathEnabled && isMathFenceLanguage(token.info.trim().toLowerCase())) continue;
+        const info = token.info ? md.utils.unescapeAll(token.info).trim() : '';
+        const language = info ? info.split(/(\s+)/g)[0] : '';
+        if (!language) continue;
+        blocks.push({ language, code: token.content });
+    }
+    return blocks;
+}
+
+export async function renderMarkdownChunks(rawMarkdown: string, filePath = ''): Promise<string[]> {
     const hasMath = /\$[^\n$]+\$|\$\$[\s\S]+?\$\$|^\s*`{3,}\s*(?:latex|math)\s*$/im.test(rawMarkdown);
     const md = hasMath ? await loadMathMarkdown() : basicMarkdown;
     const processedMd = rawMarkdown.replace(
@@ -89,13 +219,25 @@ export async function renderMarkdownWithCallouts(rawMarkdown: string, filePath =
         },
     );
 
-    let html = resolveMarkdownMedia(md.render(processedMd), filePath);
-    html = html.replace(
-        /<li>\[([ xX])\]\s+/g,
-        (_match, checked: string) =>
-            `<li><input type="checkbox" disabled${checked.toLowerCase() === 'x' ? ' checked' : ''} class="mr-2 inline-block h-4 w-4 translate-y-0.5 accent-lavender-500" aria-label="${checked.toLowerCase() === 'x' ? 'checked' : 'unchecked'}">`,
-    );
-    return html;
+    const env = {};
+    const tokens = md.parse(processedMd, env);
+    const codeBlocks = collectCodeBlocks(md, tokens, md === mathMarkdown);
+    const highlighted = codeBlocks.length ? await highlightCodeBlocks(codeBlocks) : [];
+    const options = { ...md.options, highlight: createHighlightLookup(codeBlocks, highlighted) };
+
+    const chunks: string[] = [];
+    const openElements: string[] = [];
+    let chunkHtml = '';
+    for (const group of groupTopLevelTokens(tokens)) {
+        const rendered = md.renderer.render(group, options, env);
+        chunkHtml += rendered;
+        scanHtmlTags(rendered, openElements);
+        if (openElements.length > 0) continue;
+        chunks.push(finalizeChunk(chunkHtml, filePath));
+        chunkHtml = '';
+    }
+    if (chunkHtml) chunks.push(finalizeChunk(chunkHtml, filePath));
+    return chunks;
 }
 
 export function attachMarkdownLinks(root: HTMLElement) {

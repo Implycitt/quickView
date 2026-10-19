@@ -1,10 +1,10 @@
 import { DOM, toggleSidebar } from '../../ui/core/dom.js';
-import { indexMarkdown } from '../search/markdown/index.js';
+import { clearMarkdownIndex, indexMarkdown } from '../search/markdown/index.js';
 import { runSearch } from '../search/controller.js';
 import { resetPdfState, setCurrentFileName } from '../pdf/renderer.js';
-import { updateMarkdownArticle } from './domMorph.js';
+import { insertMarkdownChunks, isLargeMarkdownDocument, updateMarkdownArticle } from './domMorph.js';
 import { attachImageFallbacks } from './imageFallback.js';
-import { renderMarkdownWithCallouts, initMdBreadcrumb, attachMarkdownLinks } from './renderer.js';
+import { renderMarkdownChunks, initMdBreadcrumb, attachMarkdownLinks } from './renderer.js';
 import type { FileResponse } from '../../types/types.d.ts';
 import type { StoredViewerState } from '../../viewer/state.js';
 
@@ -42,7 +42,7 @@ export async function renderMarkdownDocument(
     if (!reopening) resetPdfState();
     if (DOM.pdfTools) DOM.pdfTools.classList.add('hidden');
 
-    const html = await renderMarkdownWithCallouts(content.content || '', content.path || '');
+    const chunks = await renderMarkdownChunks(content.content || '', content.path || '');
     if (isStale()) return false;
     setCurrentFileName(content.name);
     if (!reopening) toggleSidebar('closed');
@@ -53,7 +53,12 @@ export async function renderMarkdownDocument(
 
     const rendered = ensureArticle();
     if (!rendered) return false;
-    updateMarkdownArticle(rendered.article, html);
+    if (!reopening && isLargeMarkdownDocument(chunks)) {
+        clearMarkdownIndex();
+        if (!(await insertMarkdownChunks(rendered.article, chunks, isStale))) return false;
+    } else {
+        updateMarkdownArticle(rendered.article, chunks.join(''));
+    }
     attachImageFallbacks(rendered.article);
     if (rendered.isFirstRender) attachMarkdownLinks(rendered.article);
     initMdBreadcrumb(content.name, DOM.mainContentNode);

@@ -44,7 +44,9 @@ function applyColorScheme(scheme: ColorScheme) {
     root.style.setProperty('--color-lavender-400', scheme.accent);
     root.style.setProperty('--color-lavender-500', scheme.action);
     root.style.setProperty('--color-lavender-600', scheme.action);
-    root.style.colorScheme = relativeLuminance(scheme.background) > 0.42 ? 'light' : 'dark';
+    const schemeMode = relativeLuminance(scheme.background) > 0.42 ? 'light' : 'dark';
+    root.style.colorScheme = schemeMode;
+    root.dataset.qvScheme = schemeMode;
     root.style.setProperty('--qv-action-text', relativeLuminance(scheme.action) > 0.179 ? '#191B22' : '#FFFFFF');
     try {
         localStorage.setItem(SELECTED_SCHEME_KEY, scheme.name);

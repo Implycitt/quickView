@@ -189,3 +189,44 @@ export function updateMarkdownArticle(article: HTMLElement, html: string) {
     template.innerHTML = html;
     morphChildren(article, template.content);
 }
+
+const LARGE_DOCUMENT_THRESHOLD = 200_000;
+const INSERTION_BATCH_CHARACTERS = 40_000;
+
+export function isLargeMarkdownDocument(chunks: string[]): boolean {
+    let length = 0;
+    for (const chunk of chunks) {
+        length += chunk.length;
+        if (length > LARGE_DOCUMENT_THRESHOLD) return true;
+    }
+    return false;
+}
+
+function nextPaint(): Promise<void> {
+    return new Promise((resolve) => {
+        const timer = setTimeout(resolve, 50);
+        requestAnimationFrame(() => {
+            clearTimeout(timer);
+            resolve();
+        });
+    });
+}
+
+export async function insertMarkdownChunks(
+    article: HTMLElement,
+    chunks: string[],
+    isStale: () => boolean,
+): Promise<boolean> {
+    article.replaceChildren();
+    let batch = '';
+    for (const chunk of chunks) {
+        if (isStale()) return false;
+        batch += chunk;
+        if (batch.length < INSERTION_BATCH_CHARACTERS) continue;
+        article.insertAdjacentHTML('beforeend', batch);
+        batch = '';
+        await nextPaint();
+    }
+    if (batch) article.insertAdjacentHTML('beforeend', batch);
+    return true;
+}
